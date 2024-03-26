@@ -16,4 +16,6 @@ SPDX-License-Identifier: Apache-2.0
 uint8_t memory[RAM_LENGTH];
 uint8_t firmware[RAM_LENGTH];
 
+uint8_t pleasestop;
+
 #endif

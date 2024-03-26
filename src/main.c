@@ -12,6 +12,8 @@ RiscvEmulatorState_t RiscvEmulatorState;
 size_t loopcounter = 0;
 
 int main() {
+    pleasestop = 0;
+
     printf("Reading dut-ram.bin\n");
     FILE *fram = fopen("dut-ram.bin", "r");
     if (fram == NULL) {
@@ -39,10 +41,14 @@ int main() {
         loopcounter++;
         RiscvEmulatorLoop(&RiscvEmulatorState);
 
-        //printf("pc: 0x%08x, instruction: 0x%08x\n", RiscvEmulatorState.programcounter, RiscvEmulatorState.instruction);
+        //printf("pc: 0x%08x, instruction: 0x%08x\n", RiscvEmulatorState.programcounter, RiscvEmulatorState.instruction.value);
 
         if (loopcounter > rominstruction * 5) {
             printf("Loopcounter limit reached, stopping emulation.\n");
+            break;
+        }
+
+        if (pleasestop > 0) {
             break;
         }
     }
@@ -53,6 +59,7 @@ int main() {
     printf("Wrote %zu bytes.\n", writtenbytes);
     fclose(framafter);
 
+    printf("Simulated %zu CPU instructions.\n", loopcounter);
     printf("Exiting.\n");
     return 0;
 }

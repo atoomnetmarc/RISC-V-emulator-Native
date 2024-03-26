@@ -69,6 +69,12 @@ inline void RiscvEmulatorStore(uint32_t address, const void *source, uint8_t len
  * The failed machine instruction is found in state.instruction.value.
  */
 inline void RiscvEmulatorUnknownInstruction(RiscvEmulatorState_t *state) {
+    printf("Unknown or not implemented RISC-V instruction. pc: 0x%08x, instruction: 0x%08x\n",
+           state->programcounter,
+           state->instruction.value);
+
+    //Requesting stop.
+    pleasestop = 1;
 }
 
 /**
@@ -81,6 +87,15 @@ inline void RiscvEmulatorUnknownCSR(RiscvEmulatorState_t *state) {
  * Handles an ECALL.
  */
 inline void RiscvEmulatorHandleECALL(RiscvEmulatorState_t *state) {
+    printf("Simulated RISC-V executed ecall! (a0: %u, a7: %u)\n",
+           state->registers.symbolic.a0,
+           state->registers.symbolic.a7);
+
+    if (state->registers.symbolic.a7 == 93) {
+        printf("The ecall requested is exit(%u). This means we are done emulating.\n",
+               state->registers.symbolic.a0);
+        pleasestop = 1;
+    }
 }
 
 #endif
