@@ -68,7 +68,15 @@ int main() {
         loopcounter++;
         RiscvEmulatorLoop(&RiscvEmulatorState);
 
-        printf("pc: 0x%08x, instruction: 0x%08x\n", RiscvEmulatorState.programcounter, RiscvEmulatorState.instruction.value);
+        printf("pc: 0x%08x, instruction: 0x%08x, \n",
+               RiscvEmulatorState.programcounter,
+               RiscvEmulatorState.instruction.value);
+
+        if (RiscvEmulatorState.registers.name.x0 != 0) {
+            printf("Error: x0 must always be zero. x0 is now 0x%08x. Stop emulation.\n",
+                   RiscvEmulatorState.registers.name.x0);
+            pleasestop  = 1;
+        }
 
         if (loopcounter >= maxloopcounter) {
             printf("Loopcounter limit reached, stopping emulation.\n");
