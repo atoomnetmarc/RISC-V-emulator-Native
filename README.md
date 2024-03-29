@@ -8,6 +8,8 @@ The resulting report.html that RISCOF generates gives an overview of RISV-V inst
 
 # Notes to self
 
-Execute the program in the same directory as where `dut-rom.bin` (the RISC-V ROM image) and `dut-ram.bin` (the RISC-V RAM default values) exist. After executing you should get `dut-ram-after.bin`.
+Symlink the build executable called `program` to `/usr/local/bin/rve`.
+
+Execute `rve` in the same directory as where `dut-rom.bin` (the RISC-V ROM image) and `dut-ram.bin` (the RISC-V RAM default values) exist. After executing you should get `dut-ram-after.bin`.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
