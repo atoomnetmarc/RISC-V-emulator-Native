@@ -35,12 +35,17 @@ inline uint32_t RiscvEmulatorLoadInstruction(uint32_t address) {
  * @param length The length in bytes of the data.
  */
 inline void RiscvEmulatorLoad(uint32_t address, void *destination, uint8_t length) {
-    if (address >= RAM_ORIGIN) {
+    printf("RiscvEmulatorLoad address 0x%08x\n", address);
+
+    if (address >= RAM_ORIGIN + RAM_LENGTH) {
+        printf("Loading from address after RAM will not work. Stopping emulation.\n");
+        pleasestop = 1;
+    } else if (address >= RAM_ORIGIN) {
         memcpy(destination, &memory[address - RAM_ORIGIN], length);
     } else if (address >= ROM_ORIGIN) {
-        // This is ROM addressing.
+        printf("Loading from ROM does not work.\n");
     } else if (address >= IO_ORIGIN) {
-        // This emulator has no IO.
+        printf("Loading from IO does not work.\n");
     }
 }
 
@@ -52,12 +57,17 @@ inline void RiscvEmulatorLoad(uint32_t address, void *destination, uint8_t lengt
  * @param length The length in bytes of the data.
  */
 inline void RiscvEmulatorStore(uint32_t address, const void *source, uint8_t length) {
-    if (address >= RAM_ORIGIN) {
+    printf("RiscvEmulatorStore address 0x%08x\n", address);
+
+    if (address >= RAM_ORIGIN + RAM_LENGTH) {
+        printf("Writing to address after RAM will not work. Stopping emulation.\n");
+        pleasestop = 1;
+    } else if (address >= RAM_ORIGIN) {
         memcpy(&memory[address - RAM_ORIGIN], source, length);
     } else if (address >= ROM_ORIGIN) {
-        // This is ROM addressing. ROM cannot be written.
+        printf("Writing to ROM does not work.\n");
     } else if (address >= IO_ORIGIN) {
-        // This emulator has no IO.
+        printf("Writing to IO does not work.\n");
     }
 }
 
@@ -73,7 +83,7 @@ inline void RiscvEmulatorUnknownInstruction(RiscvEmulatorState_t *state) {
            state->programcounter,
            state->instruction.value);
 
-    //Requesting stop.
+    // Requesting stop.
     pleasestop = 1;
 }
 
