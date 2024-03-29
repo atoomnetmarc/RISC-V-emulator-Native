@@ -91,6 +91,13 @@ inline void RiscvEmulatorUnknownInstruction(RiscvEmulatorState_t *state) {
  * Handles a fault where the CSR is not recognized.
  */
 inline void RiscvEmulatorUnknownCSR(RiscvEmulatorState_t *state) {
+    printf("Unknown or not implemented CSR. pc: 0x%08x, instruction: 0x%08x, csr: 0x%04x\n",
+           state->programcounter,
+           state->instruction.value,
+           state->instruction.itypecsr.csr);
+
+    // Requesting stop.
+    pleasestop = 1;
 }
 
 /**
