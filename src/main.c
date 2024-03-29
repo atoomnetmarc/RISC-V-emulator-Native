@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 
 #include <RiscvEmulator.h>
 
@@ -30,8 +31,34 @@ int main() {
         printf("file not found.\n");
         return 2;
     }
-    size_t rominstruction = fread(firmware, sizeof(uint8_t), sizeof(firmware), from) / 4;
+    size_t romsize = fread(firmware, sizeof(uint8_t), sizeof(firmware), from);
+    size_t maxloopcounter = (romsize / 4) * 5;
+    printf("Read %zu bytes.\n", romsize);
     fclose(from);
+
+    printf("Parsing dut-ram-signature_begin_end.txt\n");
+    FILE *fsignature = fopen("dut-ram-signature_begin_end.txt", "r");
+    if (fsignature == NULL) {
+        printf("file not found.\n");
+        return 2;
+    }
+    char ssignaturebegin[20];
+    char *resultbegin;
+    char ssignatureend[20];
+    char *resultend;
+    resultbegin = fgets(ssignaturebegin, sizeof(ssignaturebegin), fsignature);
+    resultend = fgets(ssignatureend, sizeof(ssignatureend), fsignature);
+    uint32_t signaturebegin = strtol(ssignaturebegin, NULL, 16);
+    uint32_t signatureend = strtol(ssignatureend, NULL, 16);
+
+    if (signaturebegin > signatureend) {
+        uint32_t t = signatureend;
+        signatureend = signaturebegin;
+        signaturebegin = t;
+    }
+
+    printf("Signature in RAM between 0x%08x 0x%08x.\n", signaturebegin, signatureend);
+    fclose(fsignature);
 
     printf("RiscvEmulatorInit()\n");
 
@@ -41,9 +68,9 @@ int main() {
         loopcounter++;
         RiscvEmulatorLoop(&RiscvEmulatorState);
 
-        //printf("pc: 0x%08x, instruction: 0x%08x\n", RiscvEmulatorState.programcounter, RiscvEmulatorState.instruction.value);
+        printf("pc: 0x%08x, instruction: 0x%08x\n", RiscvEmulatorState.programcounter, RiscvEmulatorState.instruction.value);
 
-        if (loopcounter > rominstruction * 5) {
+        if (loopcounter >= maxloopcounter) {
             printf("Loopcounter limit reached, stopping emulation.\n");
             break;
         }
@@ -55,9 +82,19 @@ int main() {
 
     printf("Writing dut-ram-after.bin\n");
     FILE *framafter = fopen("dut-ram-after.bin", "wb");
-    size_t writtenbytes = fwrite(memory, sizeof(uint8_t), ramsize, framafter);
-    printf("Wrote %zu bytes.\n", writtenbytes);
+    size_t writtenbytesframatfer = fwrite(memory, sizeof(uint8_t), ramsize, framafter);
+    printf("Wrote %zu bytes.\n", writtenbytesframatfer);
     fclose(framafter);
+
+    printf("Writing DUT-rve.signature\n");
+    FILE *fsignature2 = fopen("DUT-rve.signature", "wb");
+
+    for (uint32_t i = signaturebegin; i < signatureend; i += 4) {
+        uint32_t ramvalue;
+        memcpy(&ramvalue, &memory[i - RAM_ORIGIN], sizeof(ramvalue));
+        fprintf(fsignature2, "%08x\n", ramvalue);
+    }
+    fclose(fsignature2);
 
     printf("Simulated %zu CPU instructions.\n", loopcounter);
     printf("Exiting.\n");
