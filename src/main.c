@@ -47,7 +47,15 @@ int main() {
     char ssignatureend[20];
     char *resultend;
     resultbegin = fgets(ssignaturebegin, sizeof(ssignaturebegin), fsignature);
+    if (resultbegin == NULL) {
+        printf("reading 1st line of dut-ram-signature_begin_end.txt failed.\n");
+        return 3;
+    }
     resultend = fgets(ssignatureend, sizeof(ssignatureend), fsignature);
+    if (resultend == NULL) {
+        printf("reading 2nd line of dut-ram-signature_begin_end.txt failed.\n");
+        return 3;
+    }
     uint32_t signaturebegin = strtol(ssignaturebegin, NULL, 16);
     uint32_t signatureend = strtol(ssignatureend, NULL, 16);
 
