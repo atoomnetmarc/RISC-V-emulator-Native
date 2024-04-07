@@ -76,7 +76,7 @@ int main() {
         loopcounter++;
         RiscvEmulatorLoop(&RiscvEmulatorState);
 
-        printf("pc: 0x%08x, instruction: 0x%08x, \n",
+        printf("pc: 0x%08x, instruction: 0x%08x\n",
                RiscvEmulatorState.programcounter,
                RiscvEmulatorState.instruction.value);
 

@@ -118,4 +118,12 @@ inline void RiscvEmulatorHandleECALL(RiscvEmulatorState_t *state) {
     }
 }
 
+/**
+ * Handles an EBREAK.
+ */
+inline void RiscvEmulatorHandleEBREAK(RiscvEmulatorState_t *state) {
+    printf("Simulated RISC-V executed ebreak! pc: 0x%08x\n",
+           state->programcounter);
+}
+
 #endif
