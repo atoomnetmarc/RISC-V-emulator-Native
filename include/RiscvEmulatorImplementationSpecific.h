@@ -43,7 +43,8 @@ inline void RiscvEmulatorLoad(uint32_t address, void *destination, uint8_t lengt
     } else if (address >= RAM_ORIGIN) {
         memcpy(destination, &memory[address - RAM_ORIGIN], length);
     } else if (address >= ROM_ORIGIN) {
-        printf("Loading from ROM does not work.\n");
+        printf("RiscvEmulatorLoad from ROM.\n");
+        memcpy(destination, &firmware[address - ROM_ORIGIN], length);
     } else if (address >= IO_ORIGIN) {
         printf("Loading from IO does not work.\n");
     }
@@ -65,7 +66,8 @@ inline void RiscvEmulatorStore(uint32_t address, const void *source, uint8_t len
     } else if (address >= RAM_ORIGIN) {
         memcpy(&memory[address - RAM_ORIGIN], source, length);
     } else if (address >= ROM_ORIGIN) {
-        printf("Writing to ROM does not work.\n");
+        printf("RiscvEmulatorStore to ROM.\n");
+        memcpy(&firmware[address - ROM_ORIGIN], source, length);
     } else if (address >= IO_ORIGIN) {
         printf("Writing to IO does not work.\n");
     }
