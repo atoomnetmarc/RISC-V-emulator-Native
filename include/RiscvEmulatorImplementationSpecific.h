@@ -21,7 +21,7 @@ SPDX-License-Identifier: Apache-2.0
  * @param address The address in bytes of where to read the RISC-V instruction.
  * @return 32-bit RISC-V instruction.
  */
-inline uint32_t RiscvEmulatorLoadInstruction(uint32_t address) {
+static inline uint32_t RiscvEmulatorLoadInstruction(uint32_t address) {
     uint32_t instruction;
     memcpy(&instruction, &firmware[address - ROM_ORIGIN], sizeof(instruction));
     return instruction;
@@ -34,7 +34,7 @@ inline uint32_t RiscvEmulatorLoadInstruction(uint32_t address) {
  * @param destination The destination address to copy the data to.
  * @param length The length in bytes of the data.
  */
-inline void RiscvEmulatorLoad(uint32_t address, void *destination, uint8_t length) {
+static inline void RiscvEmulatorLoad(uint32_t address, void *destination, uint8_t length) {
     printf("RiscvEmulatorLoad address 0x%08x\n", address);
 
     if (address >= RAM_ORIGIN + RAM_LENGTH) {
@@ -57,7 +57,7 @@ inline void RiscvEmulatorLoad(uint32_t address, void *destination, uint8_t lengt
  * @param destination The destination address to copy the data to.
  * @param length The length in bytes of the data.
  */
-inline void RiscvEmulatorStore(uint32_t address, const void *source, uint8_t length) {
+static inline void RiscvEmulatorStore(uint32_t address, const void *source, uint8_t length) {
     printf("RiscvEmulatorStore address 0x%08x\n", address);
 
     if (address >= RAM_ORIGIN + RAM_LENGTH) {
@@ -80,7 +80,7 @@ inline void RiscvEmulatorStore(uint32_t address, const void *source, uint8_t len
  * Use a listing file of the risc-v program to better understand the wrong.
  * The failed machine instruction is found in state.instruction.value.
  */
-inline void RiscvEmulatorUnknownInstruction(RiscvEmulatorState_t *state) {
+static inline void RiscvEmulatorUnknownInstruction(RiscvEmulatorState_t *state) {
     printf("Unknown or not implemented RISC-V instruction. pc: 0x%08x, instruction: 0x%08x\n",
            state->programcounter,
            state->instruction.value);
@@ -93,7 +93,7 @@ inline void RiscvEmulatorUnknownInstruction(RiscvEmulatorState_t *state) {
 /**
  * Handles a fault where the CSR is not recognized.
  */
-inline void RiscvEmulatorUnknownCSR(RiscvEmulatorState_t *state) {
+static inline void RiscvEmulatorUnknownCSR(RiscvEmulatorState_t *state) {
 
     printf("Unknown or not implemented CSR. pc: 0x%08x, instruction: 0x%08x, csr: 0x%04x\n",
            state->programcounter,
@@ -108,7 +108,7 @@ inline void RiscvEmulatorUnknownCSR(RiscvEmulatorState_t *state) {
 /**
  * Handles an ECALL.
  */
-inline void RiscvEmulatorHandleECALL(RiscvEmulatorState_t *state) {
+static inline void RiscvEmulatorHandleECALL(RiscvEmulatorState_t *state) {
     printf("Simulated RISC-V executed ecall! (a0: %u, a7: %u)\n",
            state->registers.symbolic.a0,
            state->registers.symbolic.a7);
@@ -123,7 +123,7 @@ inline void RiscvEmulatorHandleECALL(RiscvEmulatorState_t *state) {
 /**
  * Handles an EBREAK.
  */
-inline void RiscvEmulatorHandleEBREAK(RiscvEmulatorState_t *state) {
+static inline void RiscvEmulatorHandleEBREAK(RiscvEmulatorState_t *state) {
     printf("Simulated RISC-V executed ebreak! pc: 0x%08x\n",
            state->programcounter);
 }
