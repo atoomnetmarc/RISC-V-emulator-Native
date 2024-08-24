@@ -35,7 +35,11 @@ static inline uint32_t RiscvEmulatorLoadInstruction(uint32_t address) {
  * @param length The length in bytes of the data.
  */
 static inline void RiscvEmulatorLoad(uint32_t address, void *destination, uint8_t length) {
-    printf("RiscvEmulatorLoad address 0x%08x\n", address);
+    printf("RiscvEmulatorLoad %u bytes from address 0x%08x, value: 0x", length, address);
+    for (int i = 0; i < length; i++) {
+        printf("%02x", ((uint8_t *)destination)[i]);
+    }
+    printf("\n");
 
     if (address >= RAM_ORIGIN + RAM_LENGTH) {
         printf("Loading from address after RAM will not work. Stopping emulation.\n");
@@ -54,11 +58,15 @@ static inline void RiscvEmulatorLoad(uint32_t address, void *destination, uint8_
  * Stores bytes from RISC-V to emulator.
  *
  * @param address The byte address in memory.
- * @param destination The destination address to copy the data to.
+ * @param source The source address to copy the data from.
  * @param length The length in bytes of the data.
  */
 static inline void RiscvEmulatorStore(uint32_t address, const void *source, uint8_t length) {
-    printf("RiscvEmulatorStore address 0x%08x\n", address);
+    printf("RiscvEmulatorStore %u bytes to address 0x%08x, value: 0x", length, address);
+    for (int i = 0; i < length; i++) {
+        printf("%02x", ((uint8_t *)source)[i]);
+    }
+    printf("\n");
 
     if (address >= RAM_ORIGIN + RAM_LENGTH) {
         printf("Writing to address after RAM will not work. Stopping emulation.\n");
