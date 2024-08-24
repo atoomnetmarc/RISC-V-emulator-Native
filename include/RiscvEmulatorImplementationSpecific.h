@@ -88,8 +88,8 @@ static inline void RiscvEmulatorStore(uint32_t address, const void *source, uint
  * Use a listing file of the risc-v program to better understand the wrong.
  * The failed machine instruction is found in state.instruction.value.
  */
-static inline void RiscvEmulatorUnknownInstruction(RiscvEmulatorState_t *state) {
-    printf("Unknown or not implemented RISC-V instruction. pc: 0x%08x, instruction: 0x%08x\n",
+static inline void RiscvEmulatorIllegalInstruction(RiscvEmulatorState_t *state) {
+    printf("Illegal RISC-V instruction. pc: 0x%08x, instruction: 0x%08x\n",
            state->programcounter,
            state->instruction.value);
 
