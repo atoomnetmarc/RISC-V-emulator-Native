@@ -1,3 +1,10 @@
+/*
+
+Copyright 2023-2024 Marc Ketel
+SPDX-License-Identifier: Apache-2.0
+
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -83,7 +90,7 @@ int main() {
         if (RiscvEmulatorState.registers.name.x0 != 0) {
             printf("Error: x0 must always be zero. x0 is now 0x%08x. Stop emulation.\n",
                    RiscvEmulatorState.registers.name.x0);
-            pleasestop  = 1;
+            pleasestop = 1;
         }
 
         if (loopcounter >= maxloopcounter) {
