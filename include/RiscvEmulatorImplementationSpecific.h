@@ -35,12 +35,6 @@ static inline uint32_t RiscvEmulatorLoadInstruction(uint32_t address) {
  * @param length The length in bytes of the data.
  */
 static inline void RiscvEmulatorLoad(uint32_t address, void *destination, uint8_t length) {
-    printf("RiscvEmulatorLoad %u bytes from address 0x%08x, value: 0x", length, address);
-    for (int i = 0; i < length; i++) {
-        printf("%02x", ((uint8_t *)destination)[i]);
-    }
-    printf("\n");
-
     if (address >= RAM_ORIGIN + RAM_LENGTH) {
         printf("Loading from address after RAM will not work. Stopping emulation.\n");
         pleasestop = 1;
@@ -52,6 +46,12 @@ static inline void RiscvEmulatorLoad(uint32_t address, void *destination, uint8_
     } else if (address >= IO_ORIGIN) {
         printf("Loading from IO does not work.\n");
     }
+
+    printf("RiscvEmulatorLoad %u bytes from address 0x%08x, value: 0x", length, address);
+    for (int i = length - 1; i >= 0; i--) {
+        printf("%02x", ((uint8_t *)destination)[i]);
+    }
+    printf("\n");
 }
 
 /**
@@ -63,7 +63,7 @@ static inline void RiscvEmulatorLoad(uint32_t address, void *destination, uint8_
  */
 static inline void RiscvEmulatorStore(uint32_t address, const void *source, uint8_t length) {
     printf("RiscvEmulatorStore %u bytes to address 0x%08x, value: 0x", length, address);
-    for (int i = 0; i < length; i++) {
+    for (int i = length - 1; i >= 0; i--) {
         printf("%02x", ((uint8_t *)source)[i]);
     }
     printf("\n");
