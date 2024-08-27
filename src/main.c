@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 #include <RiscvEmulator.h>
 
@@ -21,6 +22,14 @@ size_t loopcounter = 0;
 
 int main() {
     pleasestop = 0;
+
+    // For debugging specific test.
+    /*
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-result"
+    chdir("/home/marc/Projects/RISC-V-emulator/RISC-V-emulator-RISCOF/riscof_work/rv32i_m/privilege/src/misalign-lh-01.S/dut");
+#pragma GCC diagnostic pop
+    */
 
     printf("Reading dut-ram.bin\n");
     FILE *fram = fopen("dut-ram.bin", "r");
@@ -83,9 +92,12 @@ int main() {
         loopcounter++;
         RiscvEmulatorLoop(&RiscvEmulatorState);
 
-        printf("pc: 0x%08x, instruction: 0x%08x\n",
-               RiscvEmulatorState.programcounter,
-               RiscvEmulatorState.instruction.value);
+        if (RiscvEmulatorState.hookexists == 0) {
+            printf("A hook to decode instruction 0x%08x at program counter 0x%08x does not exist. Please add one.\n",
+                   RiscvEmulatorState.instruction.value,
+                   RiscvEmulatorState.programcounter);
+            // pleasestop = 1;
+        }
 
         if (RiscvEmulatorState.registers.name.x0 != 0) {
             printf("Error: x0 must always be zero. x0 is now 0x%08x. Stop emulation.\n",
