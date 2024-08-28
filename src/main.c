@@ -92,10 +92,12 @@ int main() {
         loopcounter++;
         RiscvEmulatorLoop(&RiscvEmulatorState);
 
+        // If this prints then consider adding a hook in RiscvEmulatorHook.h and implementing it in hook.c.
         if (RiscvEmulatorState.hookexists == 0) {
-            printf("A hook to decode instruction 0x%08x at program counter 0x%08x does not exist. Please add one.\n",
-                   RiscvEmulatorState.instruction.value,
-                   RiscvEmulatorState.programcounter);
+            printf("pc: 0x%08x, instruction: 0x%08x, ???\n",
+                   RiscvEmulatorState.programcounter,
+                   RiscvEmulatorState.instruction.value);
+
             // pleasestop = 1;
         }
 
