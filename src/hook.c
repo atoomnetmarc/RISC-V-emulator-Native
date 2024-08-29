@@ -15,6 +15,7 @@ SPDX-License-Identifier: Apache-2.0
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 
+#if (RVE_E_ZICSR == 1)
 /**
  * Debug prints for trap.
  */
@@ -38,6 +39,7 @@ __attribute__((weak)) void RiscvEmulatorTrapHookBegin(
     printf("                                         pc = 0x%08x\n",
            state->programcounternext);
 }
+#endif
 
 /**
  * Debug prints for Integer Register-Register Operations.
@@ -386,6 +388,8 @@ void RiscvEmulatorJALRHookEnd(
            state->programcounternext);
 }
 
+#if (RVE_E_ZICSR == 1)
+
 /**
  * Debug prints for CSRR* instructions.
  */
@@ -440,5 +444,7 @@ void RiscvEmulatorCSRR_HookEnd(
            csrname,
            *(uint32_t *)csr);
 }
+
+#endif
 
 #pragma GCC diagnostic pop
