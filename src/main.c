@@ -81,7 +81,7 @@ int main() {
         signaturebegin = t;
     }
 
-    printf("Signature in RAM between 0x%08x 0x%08x.\n", signaturebegin, signatureend);
+    printf("Signature in RAM between 0x%08X 0x%08X.\n", signaturebegin, signatureend);
     fclose(fsignature);
 
     printf("RiscvEmulatorInit()\n");
@@ -94,7 +94,7 @@ int main() {
 
         // If this prints then consider adding a hook in RiscvEmulatorHook.h and implementing it in hook.c.
         if (RiscvEmulatorState.hookexists == 0) {
-            printf("pc: 0x%08x, instruction: 0x%08x, ???\n",
+            printf("pc: 0x%08X, instruction: 0x%08X, ???\n",
                    RiscvEmulatorState.programcounter,
                    RiscvEmulatorState.instruction.value);
 
@@ -102,7 +102,7 @@ int main() {
         }
 
         if (RiscvEmulatorState.registers.name.x0 != 0) {
-            printf("Error: x0 must always be zero. x0 is now 0x%08x. Stop emulation.\n",
+            printf("Error: x0 must always be zero. x0 is now 0x%08X. Stop emulation.\n",
                    RiscvEmulatorState.registers.name.x0);
             pleasestop = 1;
         }

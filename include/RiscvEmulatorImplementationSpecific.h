@@ -46,12 +46,6 @@ static inline void RiscvEmulatorLoad(uint32_t address, void *destination, uint8_
     } else if (address >= IO_ORIGIN) {
         printf("Loading from IO does not work.\n");
     }
-
-    printf("RiscvEmulatorLoad %u bytes from address 0x%08x, value: 0x", length, address);
-    for (int i = length - 1; i >= 0; i--) {
-        printf("%02x", ((uint8_t *)destination)[i]);
-    }
-    printf("\n");
 }
 
 /**
@@ -62,12 +56,6 @@ static inline void RiscvEmulatorLoad(uint32_t address, void *destination, uint8_
  * @param length The length in bytes of the data.
  */
 static inline void RiscvEmulatorStore(uint32_t address, const void *source, uint8_t length) {
-    printf("RiscvEmulatorStore %u bytes to address 0x%08x, value: 0x", length, address);
-    for (int i = length - 1; i >= 0; i--) {
-        printf("%02x", ((uint8_t *)source)[i]);
-    }
-    printf("\n");
-
     if (address >= RAM_ORIGIN + RAM_LENGTH) {
         printf("Writing to address after RAM will not work. Stopping emulation.\n");
         pleasestop = 1;
@@ -89,7 +77,7 @@ static inline void RiscvEmulatorStore(uint32_t address, const void *source, uint
  * The failed machine instruction is found in state.instruction.value.
  */
 static inline void RiscvEmulatorIllegalInstruction(RiscvEmulatorState_t *state) {
-    printf("Illegal RISC-V instruction. pc: 0x%08x, instruction: 0x%08x\n",
+    printf("Illegal RISC-V instruction. pc: 0x%08X, instruction: 0x%08X\n",
            state->programcounter,
            state->instruction.value);
 
@@ -103,7 +91,7 @@ static inline void RiscvEmulatorIllegalInstruction(RiscvEmulatorState_t *state) 
  */
 static inline void RiscvEmulatorUnknownCSR(RiscvEmulatorState_t *state) {
 
-    printf("Unknown or not implemented CSR. pc: 0x%08x, instruction: 0x%08x, csr: 0x%04x\n",
+    printf("Unknown or not implemented CSR. pc: 0x%08X, instruction: 0x%08X, csr: 0x%04X\n",
            state->programcounter,
            state->instruction.value,
            state->instruction.itypecsr.csr);
@@ -132,7 +120,7 @@ static inline void RiscvEmulatorHandleECALL(RiscvEmulatorState_t *state) {
  * Handles an EBREAK.
  */
 static inline void RiscvEmulatorHandleEBREAK(RiscvEmulatorState_t *state) {
-    printf("Simulated RISC-V executed ebreak! pc: 0x%08x\n",
+    printf("Simulated RISC-V executed ebreak! pc: 0x%08X\n",
            state->programcounter);
 }
 
