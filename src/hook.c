@@ -30,6 +30,8 @@ void RiscvEmulatorTrapHookBegin(
            state->csr.mcause.interrupt,
            state->csr.mcause.exceptioncode,
            causedescription);
+    printf("                                         mstatus.mpp = %d\n",
+           state->csr.mstatus.mpp);
     printf("                                         mstatus.mpie = %d\n",
            state->csr.mstatus.mpie);
     printf("                                         mstatus.mie = %d\n",
@@ -85,10 +87,12 @@ void RiscvEmulatorIntRegRegHookEnd(
 
     const char *rdname = RiscvEmulatorGetRegisterSymbolicName(rdnum);
 
-    printf("                                         x%u(%s) = 0x%08X\n",
-           rdnum,
-           rdname,
-           *(uint32_t *)rd);
+    if (rdnum != 0) {
+        printf("                                         x%u(%s) = 0x%08X\n",
+               rdnum,
+               rdname,
+               *(uint32_t *)rd);
+    }
 }
 
 /**
@@ -101,7 +105,7 @@ void RiscvEmulatorIntRegImmHookBegin(
     const void *rd,
     const uint8_t rs1num,
     const void *rs1,
-    const uint32_t imm) {
+    const int16_t imm) {
 
     const char *rdname = RiscvEmulatorGetRegisterSymbolicName(rdnum);
     const char *rs1name = RiscvEmulatorGetRegisterSymbolicName(rs1num);
@@ -131,7 +135,7 @@ void RiscvEmulatorIntRegImmHookBegin(
         return;
     }
 
-    printf("pc: 0x%08X, instruction: 0x%08X, %s, rd x%u(%s): 0x%08X, rs1 x%u(%s): 0x%08X, imm: 0x%08X\n",
+    printf("pc: 0x%08X, instruction: 0x%08X, %s, rd x%u(%s): 0x%08X, rs1 x%u(%s): 0x%08X, imm: 0x%04X\n",
            state->programcounter,
            state->instruction.value,
            instruction,
@@ -141,7 +145,7 @@ void RiscvEmulatorIntRegImmHookBegin(
            rs1num,
            rs1name,
            *(uint32_t *)rs1,
-           imm);
+           (uint16_t)imm);
 }
 
 void RiscvEmulatorIntRegImmHookEnd(
@@ -151,14 +155,16 @@ void RiscvEmulatorIntRegImmHookEnd(
     const void *rd,
     const uint8_t rs1num,
     const void *rs1,
-    const uint32_t imm) {
+    const int16_t imm) {
 
     const char *rdname = RiscvEmulatorGetRegisterSymbolicName(rdnum);
 
-    printf("                                         x%u(%s) = 0x%08X\n",
-           rdnum,
-           rdname,
-           *(uint32_t *)rd);
+    if (rdnum != 0) {
+        printf("                                         x%u(%s) = 0x%08X\n",
+               rdnum,
+               rdname,
+               *(uint32_t *)rd);
+    }
 }
 
 /**
@@ -224,7 +230,7 @@ void RiscvEmulatorLoadHookEnd(
                rdnum,
                rdname,
                *(uint32_t *)rd);
-    } else if (strcmp(instruction, "lh")) {
+    } else if (strcmp(instruction, "lh") == 0) {
         printf("                                         x%u(%s) = %i\n",
                rdnum,
                rdname,
@@ -233,7 +239,7 @@ void RiscvEmulatorLoadHookEnd(
                rdnum,
                rdname,
                *(uint32_t *)rd);
-    } else if (strcmp(instruction, "lhu")) {
+    } else if (strcmp(instruction, "lhu") == 0) {
         printf("                                         x%u(%s) = %u\n",
                rdnum,
                rdname,
@@ -300,14 +306,13 @@ void RiscvEmulatorStoreHookEnd(
         printf("                                         0x%08X = 0x%02X\n",
                memorylocation,
                *(uint8_t *)rs2);
-    } else if (strcmp(instruction, "sh")) {
+    } else if (strcmp(instruction, "sh") == 0) {
         printf("                                         0x%08X = 0x%04X\n",
                memorylocation,
                *(uint16_t *)rs2);
     } else {
         printf("                                         0x%08X = 0x%08X\n",
                memorylocation,
-
                *(uint32_t *)rs2);
     }
 }
@@ -327,18 +332,91 @@ void RiscvEmulatorBranchHookBegin(
     const char *rs1name = RiscvEmulatorGetRegisterSymbolicName(rs1num);
     const char *rs2name = RiscvEmulatorGetRegisterSymbolicName(rs2num);
 
-    printf("pc: 0x%08X, instruction: 0x%08X, %s, rs1 x%u(%s): 0x%08X, rs2 x%u(%s): 0x%08X, imm: 0x%04X(%d)\n",
-           state->programcounter,
-           state->instruction.value,
-           instruction,
-           rs1num,
-           rs1name,
-           *(uint32_t *)rs1,
-           rs2num,
-           rs2name,
-           *(uint32_t *)rs2,
-           (uint16_t)imm,
-           imm);
+    // Detect pseudoinstruction BEQZ
+    if (strcmp(instruction, "beq") == 0 &&
+        rs2num == 0) {
+        printf("pc: 0x%08X, instruction: 0x%08X, beqz, rs1 x%u(%s): 0x%08X, imm: 0x%04X(%d)\n",
+               state->programcounter,
+               state->instruction.value,
+               rs1num,
+               rs1name,
+               *(uint32_t *)rs1,
+               (uint16_t)imm,
+               imm);
+    }
+    // Detect pseudoinstruction BNEZ
+    else if (strcmp(instruction, "bne") == 0 &&
+             rs2num == 0) {
+        printf("pc: 0x%08X, instruction: 0x%08X, bnez, rs1 x%u(%s): 0x%08X, imm: 0x%04X(%d)\n",
+               state->programcounter,
+               state->instruction.value,
+               rs1num,
+               rs1name,
+               *(uint32_t *)rs1,
+               (uint16_t)imm,
+               imm);
+    }
+    // Detect pseudoinstruction BGEZ
+    else if (strcmp(instruction, "bge") == 0 &&
+             rs2num == 0) {
+        printf("pc: 0x%08X, instruction: 0x%08X, bgez, rs1 x%u(%s): 0x%08X, imm: 0x%04X(%d)\n",
+               state->programcounter,
+               state->instruction.value,
+               rs1num,
+               rs1name,
+               *(uint32_t *)rs1,
+               (uint16_t)imm,
+               imm);
+    }
+    // Detect pseudoinstruction BLTZ
+    else if (strcmp(instruction, "blt") == 0 &&
+             rs2num == 0) {
+        printf("pc: 0x%08X, instruction: 0x%08X, bltz, rs1 x%u(%s): 0x%08X, imm: 0x%04X(%d)\n",
+               state->programcounter,
+               state->instruction.value,
+               rs1num,
+               rs1name,
+               *(uint32_t *)rs1,
+               (uint16_t)imm,
+               imm);
+    }
+    // Detect pseudoinstruction BLEZ
+    else if (strcmp(instruction, "bge") == 0 &&
+             rs1num == 0) {
+        printf("pc: 0x%08X, instruction: 0x%08X, blez, rs2 x%u(%s): 0x%08X, imm: 0x%04X(%d)\n",
+               state->programcounter,
+               state->instruction.value,
+               rs2num,
+               rs2name,
+               *(uint32_t *)rs2,
+               (uint16_t)imm,
+               imm);
+    }
+    // Detect pseudoinstruction BGTZ
+    else if (strcmp(instruction, "blt") == 0 &&
+             rs1num == 0) {
+        printf("pc: 0x%08X, instruction: 0x%08X, bgtz, rs2 x%u(%s): 0x%08X, imm: 0x%04X(%d)\n",
+               state->programcounter,
+               state->instruction.value,
+               rs2num,
+               rs2name,
+               *(uint32_t *)rs2,
+               (uint16_t)imm,
+               imm);
+    } else {
+        printf("pc: 0x%08X, instruction: 0x%08X, %s, rs1 x%u(%s): 0x%08X, rs2 x%u(%s): 0x%08X, imm: 0x%04X(%d)\n",
+               state->programcounter,
+               state->instruction.value,
+               instruction,
+               rs1num,
+               rs1name,
+               *(uint32_t *)rs1,
+               rs2num,
+               rs2name,
+               *(uint32_t *)rs2,
+               (uint16_t)imm,
+               imm);
+    }
 }
 
 void RiscvEmulatorBranchHookEnd(
@@ -392,28 +470,28 @@ void RiscvEmulatorLUIHookBegin(
     const RiscvEmulatorState_t *state,
     const uint8_t rdnum,
     const void *rd,
-    const uint32_t imm) {
+    const uint32_t imm31_12) {
 
     const char *rdname = RiscvEmulatorGetRegisterSymbolicName(rdnum);
 
-    printf("pc: 0x%08X, instruction: 0x%08X, lui, rd x%u(%s): 0x%08X, imm: 0x%08X\n",
+    printf("pc: 0x%08X, instruction: 0x%08X, lui, rd x%u(%s): 0x%08X, imm31_12: 0x%05X\n",
            state->programcounter,
            state->instruction.value,
            rdnum,
            rdname,
            *(uint32_t *)rd,
-           imm);
+           imm31_12);
 }
 
 void RiscvEmulatorLUIHookEnd(
     const RiscvEmulatorState_t *state,
     const uint8_t rdnum,
     const void *rd,
-    const uint32_t imm) {
+    const uint32_t imm31_12) {
+
+    const char *rdname = RiscvEmulatorGetRegisterSymbolicName(rdnum);
 
     if (rdnum != 0) {
-        const char *rdname = RiscvEmulatorGetRegisterSymbolicName(rdnum);
-
         printf("                                         x%u(%s) = 0x%08X\n",
                rdnum,
                rdname,
@@ -428,25 +506,27 @@ void RiscvEmulatorJALHookBegin(
     const RiscvEmulatorState_t *state,
     const uint8_t rdnum,
     const void *rd,
-    const uint32_t imm) {
+    const int32_t imm) {
 
     const char *rdname = RiscvEmulatorGetRegisterSymbolicName(rdnum);
 
     // Detect pseudoinstruction J
     if (rdnum == 0) {
-        printf("pc: 0x%08X, instruction: 0x%08X, j, imm: 0x%08X\n",
+        printf("pc: 0x%08X, instruction: 0x%08X, j, imm: 0x%08X(%d)\n",
                state->programcounter,
                state->instruction.value,
+               imm,
                imm);
         return;
     }
 
-    printf("pc: 0x%08X, instruction: 0x%08X, jal, rd x%u(%s): 0x%08X, imm: 0x%08X\n",
+    printf("pc: 0x%08X, instruction: 0x%08X, jal, rd x%u(%s): 0x%08X, imm: 0x%08X(%d)\n",
            state->programcounter,
            state->instruction.value,
            rdnum,
            rdname,
            *(uint32_t *)rd,
+           imm,
            imm);
 }
 
@@ -454,11 +534,11 @@ void RiscvEmulatorJALHookEnd(
     const RiscvEmulatorState_t *state,
     const uint8_t rdnum,
     const void *rd,
-    const uint32_t imm) {
+    const int32_t imm) {
+
+    const char *rdname = RiscvEmulatorGetRegisterSymbolicName(rdnum);
 
     if (rdnum != 0) {
-        const char *rdname = RiscvEmulatorGetRegisterSymbolicName(rdnum);
-
         printf("                                         x%u(%s) = 0x%08X\n",
                rdnum,
                rdname,
@@ -526,9 +606,9 @@ void RiscvEmulatorJALRHookEnd(
     const void *rs1,
     const int16_t imm) {
 
-    if (rdnum != 0) {
-        const char *rdname = RiscvEmulatorGetRegisterSymbolicName(rdnum);
+    const char *rdname = RiscvEmulatorGetRegisterSymbolicName(rdnum);
 
+    if (rdnum != 0) {
         printf("                                         x%u(%s) = 0x%08X\n",
                rdnum,
                rdname,
@@ -586,14 +666,16 @@ void RiscvEmulatorCSRR_HookEnd(
     const char *csrname = RiscvEmulatorGetCSRName(csrnum);
     const char *rdname = RiscvEmulatorGetRegisterSymbolicName(rdnum);
 
-    printf("                                         x%u(%s) = 0x%08X\n",
-           rdnum,
-           rdname,
-           *(uint32_t *)rd);
-
     printf("                                         %s = 0x%08X\n",
            csrname,
            *(uint32_t *)csr);
+
+    if (rdnum != 0) {
+        printf("                                         x%u(%s) = 0x%08X\n",
+               rdnum,
+               rdname,
+               *(uint32_t *)rd);
+    }
 }
 
 #endif
