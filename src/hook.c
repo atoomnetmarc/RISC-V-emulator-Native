@@ -15,6 +15,17 @@ SPDX-License-Identifier: Apache-2.0
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 
+/**
+ * Debug prints for ecall.
+ */
+void RiscvEmulatorEcallHookBegin(
+    const RiscvEmulatorState_t *state) {
+
+    printf("pc: 0x%08X, instruction: 0x%08X, ecall\n",
+           state->programcounter,
+           state->instruction.value);
+}
+
 #if (RVE_E_ZICSR == 1)
 /**
  * Debug prints for trap.
@@ -42,6 +53,24 @@ void RiscvEmulatorTrapHookBegin(
            state->csr.mstatus.mie);
     printf("                                         mepc = 0x%08X\n",
            state->csr.mepc);
+    printf("                                         pc = 0x%08X\n",
+           state->programcounternext);
+}
+
+/**
+ * Debug prints for mret.
+ */
+void RiscvEmulatorMretHookBegin(
+    const RiscvEmulatorState_t *state) {
+
+    printf("pc: 0x%08X, instruction: 0x%08X, mret\n",
+           state->programcounter,
+           state->instruction.value);
+}
+
+void RiscvEmulatorMretHookEnd(
+    const RiscvEmulatorState_t *state) {
+
     printf("                                         pc = 0x%08X\n",
            state->programcounternext);
 }
