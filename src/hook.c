@@ -26,11 +26,13 @@ void RiscvEmulatorTrapHookBegin(
         state->csr.mcause.interrupt,
         state->csr.mcause.exceptioncode);
 
-    printf("                                         trap, interrupt: %d, exception code %d: %s\n",
+    printf("pc: 0x%08X, instruction: 0x%08X, trap, interrupt: %d, exception code %d: %s\n",
+           state->programcounter,
+           state->instruction.value,
            state->csr.mcause.interrupt,
            state->csr.mcause.exceptioncode,
            causedescription);
-    printf("                                         mtval = %d\n",
+    printf("                                         mtval = 0x%08X\n",
            state->csr.mtval);
     printf("                                         mstatus.mpp = %d\n",
            state->csr.mstatus.mpp);

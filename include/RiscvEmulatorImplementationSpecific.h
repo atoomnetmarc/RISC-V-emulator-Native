@@ -76,13 +76,17 @@ static inline void RiscvEmulatorStore(uint32_t address, const void *source, uint
  * Use a listing file of the risc-v program to better understand the wrong.
  * The failed machine instruction is found in state.instruction.value.
  */
-static inline void RiscvEmulatorIllegalInstruction(RiscvEmulatorState_t *state) {
+static inline void RiscvEmulatorIllegalInstruction(RiscvEmulatorState_t *state __attribute__((unused))) {
+
+    // Let a trap hand the exception when Zicsr is enabled.
+#if (RVE_E_ZICSR == 0)
     printf("Illegal RISC-V instruction. pc: 0x%08X, instruction: 0x%08X\n",
            state->programcounter,
            state->instruction.value);
 
     // Requesting stop.
     pleasestop = 1;
+#endif
 }
 
 #if (RVE_E_ZICSR == 1)
