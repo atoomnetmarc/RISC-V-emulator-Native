@@ -26,6 +26,17 @@ void RiscvEmulatorEcallHookBegin(
            state->instruction.value);
 }
 
+/**
+ * Debug prints for ebreak.
+ */
+void RiscvEmulatorEbreakHookBegin(
+    const RiscvEmulatorState_t *state) {
+
+    printf("pc: 0x%08X, instruction: 0x%08X, ebreak\n",
+           state->programcounter,
+           state->instruction.value);
+}
+
 #if (RVE_E_ZICSR == 1)
 /**
  * Debug prints for trap.

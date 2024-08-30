@@ -119,9 +119,7 @@ static inline void RiscvEmulatorHandleECALL(RiscvEmulatorState_t *state) {
 /**
  * Handles an EBREAK.
  */
-static inline void RiscvEmulatorHandleEBREAK(RiscvEmulatorState_t *state) {
-    printf("Simulated RISC-V executed ebreak! pc: 0x%08X\n",
-           state->programcounter);
+static inline void RiscvEmulatorHandleEBREAK(RiscvEmulatorState_t *state __attribute__((unused))) {
 }
 
 #endif
