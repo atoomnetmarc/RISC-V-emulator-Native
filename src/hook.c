@@ -30,6 +30,8 @@ void RiscvEmulatorTrapHookBegin(
            state->csr.mcause.interrupt,
            state->csr.mcause.exceptioncode,
            causedescription);
+    printf("                                         mtval = %d\n",
+           state->csr.mtval);
     printf("                                         mstatus.mpp = %d\n",
            state->csr.mstatus.mpp);
     printf("                                         mstatus.mpie = %d\n",
@@ -59,6 +61,66 @@ void RiscvEmulatorIntRegRegHookBegin(
     const char *rdname = RiscvEmulatorGetRegisterSymbolicName(rdnum);
     const char *rs1name = RiscvEmulatorGetRegisterSymbolicName(rs1num);
     const char *rs2name = RiscvEmulatorGetRegisterSymbolicName(rs2num);
+
+    // Detect pseudoinstruction NEG
+    if (strcmp(instruction, "sub") == 0 &&
+        rs1num == 0) {
+        printf("pc: 0x%08X, instruction: 0x%08X, neg, rd x%u(%s): 0x%08X, rs2 x%u(%s): 0x%08X\n",
+               state->programcounter,
+               state->instruction.value,
+               rdnum,
+               rdname,
+               *(uint32_t *)rd,
+               rs2num,
+               rs2name,
+               *(uint32_t *)rs2);
+        return;
+    }
+
+    // Detect pseudoinstruction SNEZ
+    if (strcmp(instruction, "sltu") == 0 &&
+        rs1num == 0) {
+        printf("pc: 0x%08X, instruction: 0x%08X, snez, rd x%u(%s): 0x%08X, rs2 x%u(%s): 0x%08X\n",
+               state->programcounter,
+               state->instruction.value,
+               rdnum,
+               rdname,
+               *(uint32_t *)rd,
+               rs2num,
+               rs2name,
+               *(uint32_t *)rs2);
+        return;
+    }
+
+    // Detect pseudoinstruction SLTZ
+    if (strcmp(instruction, "slt") == 0 &&
+        rs2num == 0) {
+        printf("pc: 0x%08X, instruction: 0x%08X, sltz, rd x%u(%s): 0x%08X, rs1 x%u(%s): 0x%08X\n",
+               state->programcounter,
+               state->instruction.value,
+               rdnum,
+               rdname,
+               *(uint32_t *)rd,
+               rs1num,
+               rs1name,
+               *(uint32_t *)rs1);
+        return;
+    }
+
+    // Detect pseudoinstruction SGTZ
+    if (strcmp(instruction, "slt") == 0 &&
+        rs1num == 0) {
+        printf("pc: 0x%08X, instruction: 0x%08X, sgtz, rd x%u(%s): 0x%08X, rs2 x%u(%s): 0x%08X\n",
+               state->programcounter,
+               state->instruction.value,
+               rdnum,
+               rdname,
+               *(uint32_t *)rd,
+               rs2num,
+               rs2name,
+               *(uint32_t *)rs2);
+        return;
+    }
 
     printf("pc: 0x%08X, instruction: 0x%08X, %s, rd x%u(%s): 0x%08X, rs1 x%u(%s): 0x%08X, rs2 x%u(%s): 0x%08X\n",
            state->programcounter,
@@ -124,6 +186,36 @@ void RiscvEmulatorIntRegImmHookBegin(
     if (strcmp(instruction, "addi") == 0 &&
         imm == 0) {
         printf("pc: 0x%08X, instruction: 0x%08X, mv, rd x%u(%s): 0x%08X, rs1 x%u(%s): 0x%08X\n",
+               state->programcounter,
+               state->instruction.value,
+               rdnum,
+               rdname,
+               *(uint32_t *)rd,
+               rs1num,
+               rs1name,
+               *(uint32_t *)rs1);
+        return;
+    }
+
+    // Detect pseudoinstruction NOT
+    if (strcmp(instruction, "xori") == 0 &&
+        imm == -1) {
+        printf("pc: 0x%08X, instruction: 0x%08X, not, rd x%u(%s): 0x%08X, rs1 x%u(%s): 0x%08X\n",
+               state->programcounter,
+               state->instruction.value,
+               rdnum,
+               rdname,
+               *(uint32_t *)rd,
+               rs1num,
+               rs1name,
+               *(uint32_t *)rs1);
+        return;
+    }
+
+    // Detect pseudoinstruction SEQZ
+    if (strcmp(instruction, "sltiu") == 0 &&
+        imm == 1) {
+        printf("pc: 0x%08X, instruction: 0x%08X, seqz, rd x%u(%s): 0x%08X, rs1 x%u(%s): 0x%08X\n",
                state->programcounter,
                state->instruction.value,
                rdnum,
@@ -343,10 +435,12 @@ void RiscvEmulatorBranchHookBegin(
                *(uint32_t *)rs1,
                (uint16_t)imm,
                imm);
+        return;
     }
+
     // Detect pseudoinstruction BNEZ
-    else if (strcmp(instruction, "bne") == 0 &&
-             rs2num == 0) {
+    if (strcmp(instruction, "bne") == 0 &&
+        rs2num == 0) {
         printf("pc: 0x%08X, instruction: 0x%08X, bnez, rs1 x%u(%s): 0x%08X, imm: 0x%04X(%d)\n",
                state->programcounter,
                state->instruction.value,
@@ -355,10 +449,12 @@ void RiscvEmulatorBranchHookBegin(
                *(uint32_t *)rs1,
                (uint16_t)imm,
                imm);
+        return;
     }
+
     // Detect pseudoinstruction BGEZ
-    else if (strcmp(instruction, "bge") == 0 &&
-             rs2num == 0) {
+    if (strcmp(instruction, "bge") == 0 &&
+        rs2num == 0) {
         printf("pc: 0x%08X, instruction: 0x%08X, bgez, rs1 x%u(%s): 0x%08X, imm: 0x%04X(%d)\n",
                state->programcounter,
                state->instruction.value,
@@ -367,10 +463,12 @@ void RiscvEmulatorBranchHookBegin(
                *(uint32_t *)rs1,
                (uint16_t)imm,
                imm);
+        return;
     }
+
     // Detect pseudoinstruction BLTZ
-    else if (strcmp(instruction, "blt") == 0 &&
-             rs2num == 0) {
+    if (strcmp(instruction, "blt") == 0 &&
+        rs2num == 0) {
         printf("pc: 0x%08X, instruction: 0x%08X, bltz, rs1 x%u(%s): 0x%08X, imm: 0x%04X(%d)\n",
                state->programcounter,
                state->instruction.value,
@@ -379,10 +477,12 @@ void RiscvEmulatorBranchHookBegin(
                *(uint32_t *)rs1,
                (uint16_t)imm,
                imm);
+        return;
     }
+
     // Detect pseudoinstruction BLEZ
-    else if (strcmp(instruction, "bge") == 0 &&
-             rs1num == 0) {
+    if (strcmp(instruction, "bge") == 0 &&
+        rs1num == 0) {
         printf("pc: 0x%08X, instruction: 0x%08X, blez, rs2 x%u(%s): 0x%08X, imm: 0x%04X(%d)\n",
                state->programcounter,
                state->instruction.value,
@@ -391,10 +491,12 @@ void RiscvEmulatorBranchHookBegin(
                *(uint32_t *)rs2,
                (uint16_t)imm,
                imm);
+        return;
     }
+
     // Detect pseudoinstruction BGTZ
-    else if (strcmp(instruction, "blt") == 0 &&
-             rs1num == 0) {
+    if (strcmp(instruction, "blt") == 0 &&
+        rs1num == 0) {
         printf("pc: 0x%08X, instruction: 0x%08X, bgtz, rs2 x%u(%s): 0x%08X, imm: 0x%04X(%d)\n",
                state->programcounter,
                state->instruction.value,
@@ -403,20 +505,21 @@ void RiscvEmulatorBranchHookBegin(
                *(uint32_t *)rs2,
                (uint16_t)imm,
                imm);
-    } else {
-        printf("pc: 0x%08X, instruction: 0x%08X, %s, rs1 x%u(%s): 0x%08X, rs2 x%u(%s): 0x%08X, imm: 0x%04X(%d)\n",
-               state->programcounter,
-               state->instruction.value,
-               instruction,
-               rs1num,
-               rs1name,
-               *(uint32_t *)rs1,
-               rs2num,
-               rs2name,
-               *(uint32_t *)rs2,
-               (uint16_t)imm,
-               imm);
+        return;
     }
+
+    printf("pc: 0x%08X, instruction: 0x%08X, %s, rs1 x%u(%s): 0x%08X, rs2 x%u(%s): 0x%08X, imm: 0x%04X(%d)\n",
+           state->programcounter,
+           state->instruction.value,
+           instruction,
+           rs1num,
+           rs1name,
+           *(uint32_t *)rs1,
+           rs2num,
+           rs2name,
+           *(uint32_t *)rs2,
+           (uint16_t)imm,
+           imm);
 }
 
 void RiscvEmulatorBranchHookEnd(
