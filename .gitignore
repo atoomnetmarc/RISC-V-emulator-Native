@@ -1,5 +1,5 @@
 # PlatformIO
-*_env.ini
+*_env_local.ini
 .pio
 
 # Visual Studio Code
