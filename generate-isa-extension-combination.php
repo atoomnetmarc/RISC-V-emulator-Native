@@ -134,6 +134,14 @@ function getISAString($baseISA, $subset)
 {
     $isa = $baseISA;
 
+    //Detect G extension.
+    $gsubset = ['I', 'M', 'A', 'F', 'D', 'Zicsr', 'Zifencei'];
+    $result = array_diff($gsubset, array_merge([substr($baseISA, -1)], $subset));
+    if (count($result) === 0) {
+        $subset[array_search('I', $subset)] = 'G';
+        $subset = array_diff($subset, $gsubset);
+    }
+
     $previousValue = '';
 
     foreach ($subset as $value) {
