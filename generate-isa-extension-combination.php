@@ -11,9 +11,9 @@
  * The list of combinations might be a bit much.
  */
 
- /**
-  * List of base ISA keys.
-  */
+/**
+ * List of base ISA keys with the emulator defines.
+ */
 $baseIntegerISA = [
     'RV32I' => [],
     /*
@@ -26,6 +26,8 @@ $baseIntegerISA = [
 
 /**
  * List of subset keys with the emulator defines.
+ *
+ * The first define of each extension enables the extension, the following defines are dependencies of that extension.
  *
  * Sort subset the same as: https://gcc.gnu.org/onlinedocs/gcc/RISC-V-Options.html#index-march-14
  */
@@ -74,6 +76,7 @@ $subset = [
     ],
 ];
 
+
 $subsetKeyCombinations = generateKeyCombinations(array_keys($subset));
 
 foreach ($baseIntegerISA as $biKey => $biValue) {
@@ -82,11 +85,16 @@ foreach ($baseIntegerISA as $biKey => $biValue) {
 
         $isa = getISAString($biKey, $subsetKeyCombination);
 
+        // Skip illegal combinations like D without F.
+        if (!legalCombination($subset, $subsetKeyCombination)) {
+            continue;
+        }
+
         print "[env:{$isa}]\n";
         print "extends           = common\n";
         print "build_flags       =\n";
         print "  \${common.build_flags}\n";
-        foreach ($uniqueValues as $value) {
+        foreach (array_merge($biValue, $uniqueValues) as $value) {
             print "  {$value}\n";
         }
         print "\n";
@@ -153,4 +161,32 @@ function getISAString($baseISA, $subset)
     }
 
     return $isa;
+}
+
+/**
+ * Detect illegal combinations like D without F.
+ */
+function legalCombination($subset, $subsetKeyCombination)
+{
+    foreach($subsetKeyCombination as $subsetKey) {
+        $subsetDependencies = $subset[$subsetKey];
+        array_shift($subsetDependencies);
+
+        // Test if dependencies can be found.
+        foreach($subsetDependencies as $subsetDependency) {
+            $dependencyFound = false;
+            foreach(array_intersect_key($subset, array_flip($subsetKeyCombination)) as $s) {
+                if ($s[0] == $subsetDependency) {
+                    $dependencyFound = true;
+                    break;
+                }
+            }
+
+            if (!$dependencyFound) {
+                return false;
+            }
+        }
+    }
+
+    return true;
 }
