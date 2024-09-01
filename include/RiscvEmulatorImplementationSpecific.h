@@ -16,15 +16,14 @@ SPDX-License-Identifier: Apache-2.0
 #define RiscvEmulatorImplementationSpecific_H_
 
 /**
- * Loads a 32-bit RISC-V instruction from the specified address.
+ * Loads a RISC-V instruction from the specified address.
  *
  * @param address The address in bytes of where to read the RISC-V instruction.
- * @return 32-bit RISC-V instruction.
+ * @param destination The destination address to copy the data to.
+ * @param length The length in bytes of the data.
  */
-static inline uint32_t RiscvEmulatorLoadInstruction(uint32_t address) {
-    uint32_t instruction;
-    memcpy(&instruction, &firmware[address - ROM_ORIGIN], sizeof(instruction));
-    return instruction;
+static inline void RiscvEmulatorLoadInstruction(uint32_t address, void *destination, uint8_t length) {
+    memcpy(destination, &firmware[address - ROM_ORIGIN], length);
 }
 
 /**
@@ -78,15 +77,14 @@ static inline void RiscvEmulatorStore(uint32_t address, const void *source, uint
  */
 static inline void RiscvEmulatorIllegalInstruction(RiscvEmulatorState_t *state __attribute__((unused))) {
 
-    // Let a trap hand the exception when Zicsr is enabled.
-#if (RVE_E_ZICSR == 0)
-    printf("Illegal RISC-V instruction. pc: 0x%08X, instruction: 0x%08X\n",
-           state->programcounter,
-           state->instruction.value);
-
-    // Requesting stop.
-    pleasestop = 1;
+    // When there is no trap handler, stop the emulation.
+#if (RVE_E_ZICSR == 1)
+    if (state->csr.mtvec.base == 0)
 #endif
+    {
+        printf("There is no trap handler. Stop emulating.\n");
+        pleasestop = 1;
+    }
 }
 
 #if (RVE_E_ZICSR == 1)

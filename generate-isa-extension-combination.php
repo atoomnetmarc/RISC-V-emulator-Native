@@ -51,11 +51,9 @@ $subset = [
         '-D RVE_E_ZICSR=1',
     ],
     */
-    /*
     'C' => [
         '-D RVE_E_C=1',
     ],
-    */
     'Zicsr' => [
         '-D RVE_E_ZICSR=1',
     ],

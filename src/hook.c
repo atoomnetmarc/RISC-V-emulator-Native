@@ -200,6 +200,55 @@ void RiscvEmulatorIntRegRegHookEnd(
 }
 
 /**
+ * Debug prints for Register-Immediate Instructions.
+ */
+void RiscvEmulatorRegImmHookBegin(
+    const char *instruction,
+    const RiscvEmulatorState_t *state,
+    const uint8_t rdnum,
+    const void *rd,
+    const int32_t imm) {
+
+    const char *rdname = RiscvEmulatorGetRegisterSymbolicName(rdnum);
+
+    // Detect pseudoinstruction NOP
+    if (strcmp(instruction, "addi") == 0 &&
+        rdnum == 0) {
+        printf("pc: 0x%08X, instruction: 0x%08X, c.nop\n",
+               state->programcounter,
+               state->instruction.value);
+        return;
+    }
+
+    printf("pc: 0x%08X, instruction: 0x%08X, %s, rd x%u(%s): 0x%08X, imm: 0x%02X\n",
+           state->programcounter,
+           state->instruction.value,
+           instruction,
+           rdnum,
+           rdname,
+           *(uint32_t *)rd,
+           (uint16_t)imm);
+}
+
+void RiscvEmulatorRegImmHookEnd(
+    const char *instruction,
+    const RiscvEmulatorState_t *state,
+    const uint8_t rdnum,
+    const void *rd,
+    const int16_t imm) {
+
+    const char *rdname = RiscvEmulatorGetRegisterSymbolicName(rdnum);
+
+    if (rdnum != 0) {
+        printf("                                         x%u(%s) = 0x%08X\n",
+               rdnum,
+               rdname,
+               *(uint32_t *)rd);
+    }
+}
+
+
+/**
  * Debug prints for Integer Register-Immediate Instructions.
  */
 void RiscvEmulatorIntRegImmHookBegin(
