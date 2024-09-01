@@ -235,7 +235,7 @@ void RiscvEmulatorRegImmHookEnd(
     const RiscvEmulatorState_t *state,
     const uint8_t rdnum,
     const void *rd,
-    const int16_t imm) {
+    const int32_t imm) {
 
     const char *rdname = RiscvEmulatorGetRegisterSymbolicName(rdnum);
 
