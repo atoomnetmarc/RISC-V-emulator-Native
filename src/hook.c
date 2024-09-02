@@ -10,6 +10,7 @@ SPDX-License-Identifier: Apache-2.0
 #include <string.h>
 
 #include <RiscvEmulatorDebug.h>
+#include <RiscvEmulatorDefineOpcode.h>
 #include <RiscvEmulatorTypeEmulator.h>
 
 #pragma GCC diagnostic push
@@ -200,6 +201,66 @@ void RiscvEmulatorIntRegRegHookEnd(
 }
 
 /**
+ * Debug prints for Register-Register Instructions.
+ */
+void RiscvEmulatorRegRegHookBegin(
+    const char *instruction,
+    const RiscvEmulatorState_t *state,
+    const uint8_t rdnum,
+    const void *rd,
+    const uint8_t rs2num,
+    const void *rs2) {
+
+    const char *rdname = RiscvEmulatorGetRegisterSymbolicName(rdnum);
+    const char *rs2name = RiscvEmulatorGetRegisterSymbolicName(rs2num);
+
+#if (RVE_E_C == 1)
+    if (state->instruction.copcodequadrant.quadrant != OPCODE16_QUADRANT_INVALID) {
+        printf("pc: 0x%08X, instruction:     0x%04X, %s, rd x%u(%s): 0x%08X, rs2 x%u(%s): 0x%08X\n",
+               state->programcounter,
+               state->instruction.value,
+               instruction,
+               rdnum,
+               rdname,
+               *(uint32_t *)rd,
+               rs2num,
+               rs2name,
+               *(uint32_t *)rs2);
+    } else
+#endif
+    {
+        printf("pc: 0x%08X, instruction: 0x%08X, %s, rd x%u(%s): 0x%08X, rs2 x%u(%s): 0x%08X\n",
+               state->programcounter,
+               state->instruction.value,
+               instruction,
+               rdnum,
+               rdname,
+               *(uint32_t *)rd,
+               rs2num,
+               rs2name,
+               *(uint32_t *)rs2);
+    }
+}
+
+void RiscvEmulatorRegRegHookEnd(
+    const char *instruction,
+    const RiscvEmulatorState_t *state,
+    const uint8_t rdnum,
+    const void *rd,
+    const uint8_t rs2num,
+    const void *rs2) {
+
+    const char *rdname = RiscvEmulatorGetRegisterSymbolicName(rdnum);
+
+    if (rdnum != 0) {
+        printf("                                         x%u(%s) = 0x%08X\n",
+               rdnum,
+               rdname,
+               *(uint32_t *)rd);
+    }
+}
+
+/**
  * Debug prints for Register-Immediate Instructions.
  */
 void RiscvEmulatorRegImmHookBegin(
@@ -211,23 +272,39 @@ void RiscvEmulatorRegImmHookBegin(
 
     const char *rdname = RiscvEmulatorGetRegisterSymbolicName(rdnum);
 
-    // Detect pseudoinstruction NOP
-    if (strcmp(instruction, "addi") == 0 &&
-        rdnum == 0) {
-        printf("pc: 0x%08X, instruction: 0x%08X, c.nop\n",
-               state->programcounter,
-               state->instruction.value);
-        return;
-    }
+#if (RVE_E_C == 1)
+    if (state->instruction.copcodequadrant.quadrant != OPCODE16_QUADRANT_INVALID) {
+        // Detect pseudoinstruction NOP
+        if (strcmp(instruction, "c.addi") == 0 &&
+            rdnum == 0) {
+            printf("pc: 0x%08X, instruction:     0x%04X, c.nop\n",
+                   state->programcounter,
+                   state->instruction.value);
+            return;
+        }
 
-    printf("pc: 0x%08X, instruction: 0x%08X, %s, rd x%u(%s): 0x%08X, imm: 0x%02X\n",
-           state->programcounter,
-           state->instruction.value,
-           instruction,
-           rdnum,
-           rdname,
-           *(uint32_t *)rd,
-           (uint16_t)imm);
+        printf("pc: 0x%08X, instruction:     0x%04X, %s, rd x%u(%s): 0x%08X, imm: 0x%02X(%d)\n",
+               state->programcounter,
+               state->instruction.value,
+               instruction,
+               rdnum,
+               rdname,
+               *(uint32_t *)rd,
+               (uint16_t)imm,
+               imm);
+    } else
+#endif
+    {
+        printf("pc: 0x%08X, instruction: 0x%08X, %s, rd x%u(%s): 0x%08X, imm: 0x%02X(%d)\n",
+               state->programcounter,
+               state->instruction.value,
+               instruction,
+               rdnum,
+               rdname,
+               *(uint32_t *)rd,
+               (uint16_t)imm,
+               imm);
+    }
 }
 
 void RiscvEmulatorRegImmHookEnd(
@@ -246,7 +323,6 @@ void RiscvEmulatorRegImmHookEnd(
                *(uint32_t *)rd);
     }
 }
-
 
 /**
  * Debug prints for Integer Register-Immediate Instructions.
@@ -318,7 +394,7 @@ void RiscvEmulatorIntRegImmHookBegin(
         return;
     }
 
-    printf("pc: 0x%08X, instruction: 0x%08X, %s, rd x%u(%s): 0x%08X, rs1 x%u(%s): 0x%08X, imm: 0x%04X\n",
+    printf("pc: 0x%08X, instruction: 0x%08X, %s, rd x%u(%s): 0x%08X, rs1 x%u(%s): 0x%08X, imm: 0x%04X(%d)\n",
            state->programcounter,
            state->instruction.value,
            instruction,
@@ -328,7 +404,8 @@ void RiscvEmulatorIntRegImmHookBegin(
            rs1num,
            rs1name,
            *(uint32_t *)rs1,
-           (uint16_t)imm);
+           (uint16_t)imm,
+           imm);
 }
 
 void RiscvEmulatorIntRegImmHookEnd(
