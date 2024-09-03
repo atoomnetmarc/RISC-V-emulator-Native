@@ -215,7 +215,7 @@ void RiscvEmulatorRegRegHookBegin(
     const char *rs2name = RiscvEmulatorGetRegisterSymbolicName(rs2num);
 
 #if (RVE_E_C == 1)
-    if (state->instruction.copcodequadrant.quadrant != OPCODE16_QUADRANT_INVALID) {
+    if (state->instruction.copcode.op != OPCODE16_QUADRANT_INVALID) {
         printf("pc: 0x%08X, instruction:     0x%04X, %s, rd x%u(%s): 0x%08X, rs2 x%u(%s): 0x%08X\n",
                state->programcounter,
                state->instruction.value,
@@ -273,7 +273,7 @@ void RiscvEmulatorRegImmHookBegin(
     const char *rdname = RiscvEmulatorGetRegisterSymbolicName(rdnum);
 
 #if (RVE_E_C == 1)
-    if (state->instruction.copcodequadrant.quadrant != OPCODE16_QUADRANT_INVALID) {
+    if (state->instruction.copcode.op != OPCODE16_QUADRANT_INVALID) {
         // Detect pseudoinstruction NOP
         if (strcmp(instruction, "c.addi") == 0 &&
             rdnum == 0) {
@@ -283,14 +283,14 @@ void RiscvEmulatorRegImmHookBegin(
             return;
         }
 
-        printf("pc: 0x%08X, instruction:     0x%04X, %s, rd x%u(%s): 0x%08X, imm: 0x%02X(%d)\n",
+        printf("pc: 0x%08X, instruction:     0x%04X, %s, rd x%u(%s): 0x%08X, imm: 0x%04X(%d)\n",
                state->programcounter,
                state->instruction.value,
                instruction,
                rdnum,
                rdname,
                *(uint32_t *)rd,
-               (uint16_t)imm,
+               imm,
                imm);
     } else
 #endif
@@ -533,19 +533,38 @@ void RiscvEmulatorStoreHookBegin(
     const char *rs1name = RiscvEmulatorGetRegisterSymbolicName(rs1num);
     const char *rs2name = RiscvEmulatorGetRegisterSymbolicName(rs2num);
 
-    printf("pc: 0x%08X, instruction: 0x%08X, %s, rs1 x%u(%s): 0x%08X, rs2 x%u(%s): 0x%08X, imm: 0x%04X(%d), memorylocation: 0x%08X\n",
-           state->programcounter,
-           state->instruction.value,
-           instruction,
-           rs1num,
-           rs1name,
-           *(uint32_t *)rs1,
-           rs2num,
-           rs2name,
-           *(uint32_t *)rs2,
-           (uint16_t)imm,
-           imm,
-           memorylocation);
+#if (RVE_E_C == 1)
+    if (state->instruction.copcode.op != OPCODE16_QUADRANT_INVALID) {
+        printf("pc: 0x%08X, instruction:     0x%04X, %s, rs1 x%u(%s): 0x%08X, rs2 x%u(%s): 0x%08X, imm: 0x%04X(%d), memorylocation: 0x%08X\n",
+               state->programcounter,
+               state->instruction.value,
+               instruction,
+               rs1num,
+               rs1name,
+               *(uint32_t *)rs1,
+               rs2num,
+               rs2name,
+               *(uint32_t *)rs2,
+               (uint16_t)imm,
+               imm,
+               memorylocation);
+    } else
+#endif
+    {
+        printf("pc: 0x%08X, instruction: 0x%08X, %s, rs1 x%u(%s): 0x%08X, rs2 x%u(%s): 0x%08X, imm: 0x%04X(%d), memorylocation: 0x%08X\n",
+               state->programcounter,
+               state->instruction.value,
+               instruction,
+               rs1num,
+               rs1name,
+               *(uint32_t *)rs1,
+               rs2num,
+               rs2name,
+               *(uint32_t *)rs2,
+               (uint16_t)imm,
+               imm,
+               memorylocation);
+    }
 }
 
 /**
