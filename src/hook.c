@@ -568,7 +568,7 @@ void RiscvEmulatorStoreHookBegin(
 }
 
 /**
- * Generic hook function for Store Operations.
+ * Debug print for Store Operations.
  */
 void RiscvEmulatorStoreHookEnd(
     const char *instruction,
@@ -594,6 +594,97 @@ void RiscvEmulatorStoreHookEnd(
                memorylocation,
                *(uint32_t *)rs2);
     }
+}
+
+/**
+ * Debug print for Stack-relative Store Operations.
+ */
+void RiscvEmulatorStackRelativeStoreHookBegin(
+    const char *instruction,
+    const RiscvEmulatorState_t *state,
+    const uint8_t rs2num,
+    const void *rs2,
+    const void *sp,
+    const uint32_t imm,
+    const uint32_t memorylocation) {
+
+    const char *rs2name = RiscvEmulatorGetRegisterSymbolicName(rs2num);
+
+    printf("pc: 0x%08X, instruction:     0x%04X, %s, rs2 x%u(%s): 0x%08X, sp: 0x%08X, imm: 0x%02X(%d), memorylocation: 0x%08X\n",
+           state->programcounter,
+           state->instruction.value,
+           instruction,
+           rs2num,
+           rs2name,
+           *(uint32_t *)rs2,
+           *(uint32_t *)sp,
+           (uint8_t)imm,
+           imm,
+           memorylocation);
+}
+
+/**
+ * Debug print for Stack-relative Store Operations.
+ */
+void RiscvEmulatorStackRelativeStoreHookEnd(
+    const char *instruction,
+    const RiscvEmulatorState_t *state,
+    const uint8_t rs2num,
+    const void *rs2,
+    const void *sp,
+    const uint32_t imm,
+    const uint32_t memorylocation) {
+
+    printf("                                         0x%08X = 0x%08X\n",
+           memorylocation,
+           *(uint32_t *)rs2);
+}
+
+/**
+ * Debug print for Stack-relative Load Operations.
+ */
+void RiscvEmulatorStackRelativeLoadHookBegin(
+    const char *instruction,
+    const RiscvEmulatorState_t *state,
+    const uint8_t rdnum,
+    const void *rd,
+    const void *sp,
+    const uint32_t imm,
+    const uint32_t memorylocation) {
+
+    const char *rdname = RiscvEmulatorGetRegisterSymbolicName(rdnum);
+
+    printf("pc: 0x%08X, instruction:     0x%04X, %s, rd x%u(%s): 0x%08X, sp: 0x%08X, imm: 0x%02X(%d), memorylocation: 0x%08X\n",
+           state->programcounter,
+           state->instruction.value,
+           instruction,
+           rdnum,
+           rdname,
+           *(uint32_t *)rd,
+           *(uint32_t *)sp,
+           (uint8_t)imm,
+           imm,
+           memorylocation);
+}
+
+/**
+ * Debug print for Stack-relative Load Operations.
+ */
+void RiscvEmulatorStackRelativeLoadHookEnd(
+    const char *instruction,
+    const RiscvEmulatorState_t *state,
+    const uint8_t rdnum,
+    const void *rd,
+    const void *sp,
+    const uint32_t imm,
+    const uint32_t memorylocation) {
+
+    const char *rdname = RiscvEmulatorGetRegisterSymbolicName(rdnum);
+
+    printf("                                         x%u(%s) = 0x%08X\n",
+           rdnum,
+           rdname,
+           *(uint32_t *)rd);
 }
 
 /**
