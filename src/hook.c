@@ -283,6 +283,21 @@ void RiscvEmulatorRegImmHookBegin(
             return;
         }
 
+        if (strcmp(instruction, "c.addi4spn") == 0) {
+            const void *sp = &state->registers.symbolic.sp;
+            printf("pc: 0x%08X, instruction:     0x%04X, %s, rd x%u(%s): 0x%08X, sp: 0x%08X, imm: 0x%04X(%d)\n",
+                   state->programcounter,
+                   state->instruction.value,
+                   instruction,
+                   rdnum,
+                   rdname,
+                   *(uint32_t *)rd,
+                   *(uint32_t *)sp,
+                   imm,
+                   imm);
+            return;
+        }
+
         printf("pc: 0x%08X, instruction:     0x%04X, %s, rd x%u(%s): 0x%08X, imm: 0x%04X(%d)\n",
                state->programcounter,
                state->instruction.value,
