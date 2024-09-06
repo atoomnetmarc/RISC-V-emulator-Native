@@ -67,7 +67,8 @@ void RiscvEmulatorHook(
     const char *rs2name = RiscvEmulatorGetRegisterSymbolicName(rs2num);
 
 #if (RVE_E_ZICSR == 1)
-    const uint8_t csrnum = context->csrnum;
+    const uint16_t csrnum = context->csrnum;
+    const void *csr = context->csr;
     const char *csrname = RiscvEmulatorGetCSRName(csrnum);
 #endif
 
@@ -109,9 +110,11 @@ void RiscvEmulatorHook(
         }
     }
 
-    // I
+    /**
+     * R-type pseudoinstructions.
+     */
 
-    // Detect pseudoinstruction neg
+    // Detect neg
     if (strcmp(context->instruction, "sub") == 0 &&
         rs1num == 0) {
         if (context->hook == HOOK_BEGIN) {
@@ -126,7 +129,7 @@ void RiscvEmulatorHook(
         }
     }
 
-    // Detect pseudoinstruction snez
+    // Detect snez
     if (strcmp(context->instruction, "sltu") == 0 &&
         rs1num == 0) {
         if (context->hook == HOOK_BEGIN) {
@@ -141,7 +144,7 @@ void RiscvEmulatorHook(
         }
     }
 
-    // Detect pseudoinstruction sltz
+    // Detect sltz
     if (strcmp(context->instruction, "slt") == 0 &&
         rs2num == 0) {
         if (context->hook == HOOK_BEGIN) {
@@ -156,7 +159,7 @@ void RiscvEmulatorHook(
         }
     }
 
-    // Detect pseudoinstruction sgtz
+    // Detect sgtz
     if (strcmp(context->instruction, "slt") == 0 &&
         rs1num == 0) {
         if (context->hook == HOOK_BEGIN) {
@@ -170,6 +173,12 @@ void RiscvEmulatorHook(
             return;
         }
     }
+
+    /**
+     * R-type, Integer Register-Register instructions.
+     *
+     * prints rd, rs1 and rs2.
+     */
 
     if (strcmp(context->instruction, "add") == 0 ||
         strcmp(context->instruction, "sub") == 0 ||
@@ -223,7 +232,11 @@ void RiscvEmulatorHook(
         }
     }
 
-    // Detect pseudoinstruction nop
+    /**
+     * I-type and Compressed Immediate pseudoinstructions.
+     */
+
+    // Detect nop
     if (strcmp(context->instruction, "addi") == 0 &&
         rdnum == 0) {
         if (context->hook == HOOK_BEGIN) {
@@ -234,7 +247,7 @@ void RiscvEmulatorHook(
         }
     }
 
-    // Detect pseudoinstruction mv
+    // Detect mv
     if (strcmp(context->instruction, "addi") == 0 &&
         imm == 0) {
         if (context->hook == HOOK_BEGIN) {
@@ -249,7 +262,7 @@ void RiscvEmulatorHook(
         }
     }
 
-    // Detect pseudoinstruction not
+    // Detect not
     if (strcmp(context->instruction, "xori") == 0 &&
         (int16_t)imm == -1) {
         if (context->hook == HOOK_BEGIN) {
@@ -264,7 +277,7 @@ void RiscvEmulatorHook(
         }
     }
 
-    // Detect pseudoinstruction seqz
+    // Detect seqz
     if (strcmp(context->instruction, "sltiu") == 0 &&
         imm == 1) {
         if (context->hook == HOOK_BEGIN) {
@@ -275,6 +288,78 @@ void RiscvEmulatorHook(
                    rs1num,
                    rs1name,
                    *(uint32_t *)rs1);
+            return;
+        }
+    }
+
+    // Detect c.nop
+    if (strcmp(context->instruction, "c.addi") == 0 &&
+        rdnum == 0 &&
+        rs1num == 0) {
+        if (context->hook == HOOK_BEGIN) {
+            printf(", c.nop\n");
+            return;
+        } else if (context->hook == HOOK_END) {
+            return;
+        }
+    }
+
+    // Detect ret
+    if (strcmp(context->instruction, "jalr") == 0 &&
+        rdnum == 0 && rs1num == 1 && imm == 0) {
+        if (context->hook == HOOK_BEGIN) {
+            printf(", ret, rs1 x%u(%s): 0x%08X\n",
+                   rs1num,
+                   rs1name,
+                   *(uint32_t *)rs1);
+            return;
+        }
+    }
+
+    // Detect jr
+    if (strcmp(context->instruction, "jalr") == 0 &&
+        rdnum == 0) {
+        if (context->hook == HOOK_BEGIN) {
+            printf(", jr, rs1 x%u(%s): 0x%08X",
+                   rs1num,
+                   rs1name,
+                   *(uint32_t *)rs1);
+            printInteger(immname, imm, immlength, immissigned);
+            printf("\n");
+            return;
+        }
+    }
+
+    /**
+     * I-type, Integer Register-Immediate instructions.
+     *
+     * prints rd, rs1 and imm.
+     */
+
+    if (strcmp(context->instruction, "jalr") == 0) {
+        if (context->hook == HOOK_BEGIN) {
+            printf(", %s, rd x%u(%s): 0x%08X, rs1 x%u(%s): 0x%08X",
+                   context->instruction,
+                   rdnum,
+                   rdname,
+                   *(uint32_t *)rd,
+                   rs1num,
+                   rs1name,
+                   *(uint32_t *)rs1);
+            printInteger(immname, imm, immlength, immissigned);
+            printf("\n");
+            return;
+        } else if (context->hook == HOOK_END) {
+            if (rdnum != 0) {
+                printf("%sx%u(%s) = 0x%08X\n",
+                       tab,
+                       rdnum,
+                       rdname,
+                       *(uint32_t *)rd);
+                printf("%spc = 0x%08X\n",
+                       tab,
+                       state->programcounternext);
+            }
             return;
         }
     }
@@ -316,6 +401,12 @@ void RiscvEmulatorHook(
             return;
         }
     }
+
+    /**
+     * I-type Load instructions.
+     *
+     * prints rd, rs1, imm and memory location.
+     */
 
     if (strcmp(context->instruction, "lb") == 0 ||
         strcmp(context->instruction, "lbu") == 0 ||
@@ -391,6 +482,107 @@ void RiscvEmulatorHook(
         }
     }
 
+    /**
+     * I-type Misc-Mem instructions.
+     */
+
+    if (strcmp(context->instruction, "fence") == 0 ||
+        strcmp(context->instruction, "fencei") == 0) {
+        printf(", %s\n", context->instruction);
+        return;
+    }
+
+    /**
+     * I-type System instructions.
+     */
+
+    if (strcmp(context->instruction, "mret") == 0) {
+        if (context->hook == HOOK_BEGIN) {
+            printf(", %s\n", context->instruction);
+            return;
+        } else if (context->hook == HOOK_END) {
+            printf("%spc = 0x%08X\n",
+                   tab,
+                   state->programcounternext);
+            return;
+        }
+    }
+
+    if (strcmp(context->instruction, "ecall") == 0 ||
+        strcmp(context->instruction, "ebreak") == 0) {
+        printf(", %s\n", context->instruction);
+        return;
+    }
+
+    if (strcmp(context->instruction, "csrrw") == 0 ||
+        strcmp(context->instruction, "csrrs") == 0 ||
+        strcmp(context->instruction, "csrrc") == 0) {
+        if (context->hook == HOOK_BEGIN) {
+            printf(", %s, rd x%u(%s): 0x%08X, rs1 x%u(%s): 0x%08X, csr 0x%04X(%s): 0x%08X\n",
+                   context->instruction,
+                   rdnum,
+                   rdname,
+                   *(uint32_t *)rd,
+                   rs1num,
+                   rs1name,
+                   *(uint32_t *)rs1,
+                   csrnum,
+                   csrname,
+                   *(uint32_t *)csr);
+            return;
+        } else if (context->hook == HOOK_END) {
+            printf("%s%s = 0x%08X\n",
+                   tab,
+                   csrname,
+                   *(uint32_t *)csr);
+            if (rdnum != 0) {
+                printf("%sx%u(%s) = 0x%08X\n",
+                       tab,
+                       rdnum,
+                       rdname,
+                       *(uint32_t *)rd);
+            }
+            return;
+        }
+    }
+
+    if (strcmp(context->instruction, "csrrwi") == 0 ||
+        strcmp(context->instruction, "csrrsi") == 0 ||
+        strcmp(context->instruction, "csrrci") == 0) {
+        if (context->hook == HOOK_BEGIN) {
+            printf(", %s, rd x%u(%s): 0x%08X",
+                   context->instruction,
+                   rdnum,
+                   rdname,
+                   *(uint32_t *)rd);
+            printInteger(immname, imm, immlength, immissigned);
+            printf(", csr 0x%04X(%s): 0x%08X\n",
+                   csrnum,
+                   csrname,
+                   *(uint32_t *)csr);
+            return;
+        } else if (context->hook == HOOK_END) {
+            printf("%s%s = 0x%08X\n",
+                   tab,
+                   csrname,
+                   *(uint32_t *)csr);
+            if (rdnum != 0) {
+                printf("%sx%u(%s) = 0x%08X\n",
+                       tab,
+                       rdnum,
+                       rdname,
+                       *(uint32_t *)rd);
+            }
+            return;
+        }
+    }
+
+    /**
+     * S-type, Compressed Store instructions.
+     *
+     * prints rs1, rs2, imm and memory location.
+     */
+
     if (strcmp(context->instruction, "sb") == 0 ||
         strcmp(context->instruction, "sh") == 0 ||
         strcmp(context->instruction, "sw") == 0 ||
@@ -429,29 +621,304 @@ void RiscvEmulatorHook(
         }
     }
 
-    // M
+    /**
+     * B-type pseudoinstructions.
+     */
 
-    // A
-
-    // F
-
-    // D
-
-    // Q
-
-    // C
-
-    // Detect pseudoinstruction c.nop
-    if (strcmp(context->instruction, "c.addi") == 0 &&
-        rdnum == 0 &&
-        rs1num == 0) {
+    // Detect BEQZ
+    if (strcmp(context->instruction, "beq") == 0 &&
+        rs2num == 0) {
         if (context->hook == HOOK_BEGIN) {
-            printf(", c.nop\n");
-            return;
-        } else if (context->hook == HOOK_END) {
+            printf(", beqz, rs1 x%u(%s): 0x%08X",
+                   rs1num,
+                   rs1name,
+                   *(uint32_t *)rs1);
+            printInteger(immname, imm, immlength, immissigned);
+            printf("\n");
             return;
         }
     }
+
+    // Detect BNEZ
+    if (strcmp(context->instruction, "bne") == 0 &&
+        rs2num == 0) {
+        if (context->hook == HOOK_BEGIN) {
+            printf(", bnez, rs1 x%u(%s): 0x%08X",
+                   rs1num,
+                   rs1name,
+                   *(uint32_t *)rs1);
+            printInteger(immname, imm, immlength, immissigned);
+            printf("\n");
+            return;
+        }
+    }
+
+    // Detect BGEZ
+    if (strcmp(context->instruction, "bge") == 0 &&
+        rs2num == 0) {
+        if (context->hook == HOOK_BEGIN) {
+            printf(", bgez, rs1 x%u(%s): 0x%08X",
+                   rs1num,
+                   rs1name,
+                   *(uint32_t *)rs1);
+            printInteger(immname, imm, immlength, immissigned);
+            printf("\n");
+            return;
+        }
+    }
+
+    // Detect BLTZ
+    if (strcmp(context->instruction, "blt") == 0 &&
+        rs2num == 0) {
+        if (context->hook == HOOK_BEGIN) {
+            printf(", bltz, rs1 x%u(%s): 0x%08X",
+                   rs1num,
+                   rs1name,
+                   *(uint32_t *)rs1);
+            printInteger(immname, imm, immlength, immissigned);
+            printf("\n");
+            return;
+        }
+    }
+
+    // Detect BLEZ
+    if (strcmp(context->instruction, "bge") == 0 &&
+        rs1num == 0) {
+        if (context->hook == HOOK_BEGIN) {
+            printf(", blez, rs2 x%u(%s): 0x%08X",
+                   rs2num,
+                   rs2name,
+                   *(uint32_t *)rs2);
+            printInteger(immname, imm, immlength, immissigned);
+            printf("\n");
+            return;
+        }
+    }
+
+    // Detect BGTZ
+    if (strcmp(context->instruction, "blt") == 0 &&
+        rs1num == 0) {
+        if (context->hook == HOOK_BEGIN) {
+            printf(", bgtz, rs2 x%u(%s): 0x%08X",
+                   rs2num,
+                   rs2name,
+                   *(uint32_t *)rs2);
+            printInteger(immname, imm, immlength, immissigned);
+            printf("\n");
+            return;
+        }
+    }
+
+    /**
+     * B-type instructions.
+     *
+     * prints rs1, rs2, and imm.
+     */
+
+    if (strcmp(context->instruction, "beq") == 0 ||
+        strcmp(context->instruction, "bne") == 0 ||
+        strcmp(context->instruction, "bge") == 0 ||
+        strcmp(context->instruction, "bgeu") == 0 ||
+        strcmp(context->instruction, "blt") == 0 ||
+        strcmp(context->instruction, "bltu") == 0) {
+        if (context->hook == HOOK_BEGIN) {
+            printf(", %s, rs1 x%u(%s): 0x%08X, rs2 x%u(%s): 0x%08X",
+                   context->instruction,
+                   rs1num,
+                   rs1name,
+                   *(uint32_t *)rs1,
+                   rs2num,
+                   rs2name,
+                   *(uint32_t *)rs2);
+            printInteger(immname, imm, immlength, immissigned);
+            printf("\n");
+            return;
+        } else if (context->hook == HOOK_END) {
+            printf("%spc = 0x%08X\n",
+                   tab,
+                   state->programcounternext);
+            return;
+        }
+    }
+
+    /**
+     * U-type instructions.
+     *
+     * prints rd and imm.
+     */
+
+    if (strcmp(context->instruction, "lui") == 0 ||
+        strcmp(context->instruction, "auipc") == 0) {
+        if (context->hook == HOOK_BEGIN) {
+            printf(", %s, rd x%u(%s): 0x%08X",
+                   context->instruction,
+                   rdnum,
+                   rdname,
+                   *(uint32_t *)rd);
+            printInteger(immname, imm, immlength, immissigned);
+            printf("\n");
+            return;
+        } else if (context->hook == HOOK_END) {
+            if (rdnum != 0) {
+                printf("%sx%u(%s) = 0x%08X\n",
+                       tab,
+                       rdnum,
+                       rdname,
+                       *(uint32_t *)rd);
+            }
+            return;
+        }
+    }
+
+    /**
+     * J-type pseudoinstructions.
+     */
+
+    // Detect J
+    if (strcmp(context->instruction, "jal") == 0) {
+        if (rdnum == 0) {
+            if (context->hook == HOOK_BEGIN) {
+                printf(", j");
+                printInteger(immname, imm, immlength, immissigned);
+                printf("\n");
+                return;
+            }
+        }
+    }
+
+    /**
+     * J-type instructions.
+     *
+     * prints rd and imm.
+     */
+
+    if (strcmp(context->instruction, "jal") == 0) {
+        if (context->hook == HOOK_BEGIN) {
+            printf(", %s, rd x%u(%s): 0x%08X",
+                   context->instruction,
+                   rdnum,
+                   rdname,
+                   *(uint32_t *)rd);
+            printInteger(immname, imm, immlength, immissigned);
+            printf("\n");
+            return;
+        } else if (context->hook == HOOK_END) {
+            if (rdnum != 0) {
+                printf("%sx%u(%s) = 0x%08X\n",
+                       tab,
+                       rdnum,
+                       rdname,
+                       *(uint32_t *)rd);
+                printf("%spc = 0x%08X\n",
+                       tab,
+                       state->programcounternext);
+            }
+            return;
+        }
+    }
+
+    /**
+     * Compressed Register instructions.
+     */
+
+    if (strcmp(context->instruction, "c.add") == 0) {
+        if (context->hook == HOOK_BEGIN) {
+            printf(", %s, rs1/rd x%u(%s): 0x%08X, rs2 x%u(%s): 0x%08X",
+                   context->instruction,
+                   rdnum,
+                   rdname,
+                   *(uint32_t *)rd,
+                   rs2num,
+                   rs2name,
+                   *(uint32_t *)rs2);
+            printf("\n");
+            return;
+        } else if (context->hook == HOOK_END) {
+            printf("%sx%u(%s) = 0x%08X\n",
+                   tab,
+                   rdnum,
+                   rdname,
+                   *(uint32_t *)rd);
+            return;
+        }
+    }
+
+    if (strcmp(context->instruction, "c.mv") == 0) {
+        if (context->hook == HOOK_BEGIN) {
+            printf(", %s, rd x%u(%s): 0x%08X, rs2 x%u(%s): 0x%08X",
+                   context->instruction,
+                   rdnum,
+                   rdname,
+                   *(uint32_t *)rd,
+                   rs2num,
+                   rs2name,
+                   *(uint32_t *)rs2);
+            printf("\n");
+            return;
+        } else if (context->hook == HOOK_END) {
+            printf("%sx%u(%s) = 0x%08X\n",
+                   tab,
+                   rdnum,
+                   rdname,
+                   *(uint32_t *)rd);
+            return;
+        }
+    }
+
+    /**
+     * Compressed Immediate instructions.
+     */
+
+    if (strcmp(context->instruction, "c.li") == 0 ||
+        strcmp(context->instruction, "c.lui") == 0 ||
+        strcmp(context->instruction, "c.addi") == 0) {
+        if (context->hook == HOOK_BEGIN) {
+            printf(", %s, rd x%u(%s): 0x%08X",
+                   context->instruction,
+                   rdnum,
+                   rdname,
+                   *(uint32_t *)rd);
+            printInteger(immname, imm, immlength, immissigned);
+            printf("\n");
+            return;
+        } else if (context->hook == HOOK_END) {
+            printf("%sx%u(%s) = 0x%08X\n",
+                   tab,
+                   rdnum,
+                   rdname,
+                   *(uint32_t *)rd);
+            return;
+        }
+    }
+
+    /**
+     * Compressed Stack-relative Store instructions.
+     */
+
+    if (strcmp(context->instruction, "c.swsp") == 0) {
+        if (context->hook == HOOK_BEGIN) {
+            printf(", %s, rs2 x%u(%s): 0x%08X, sp: 0x%08X",
+                   context->instruction,
+                   rs2num,
+                   rs2name,
+                   *(uint32_t *)rs2,
+                   *(uint32_t *)sp);
+            printInteger(immname, imm, immlength, immissigned);
+            printf(", memorylocation: 0x%08X\n",
+                   memorylocation);
+            return;
+        } else if (context->hook == HOOK_END) {
+            printf("%s0x%08X = 0x%08X\n",
+                   tab,
+                   memorylocation,
+                   *(uint32_t *)rs2);
+            return;
+        }
+    }
+
+    /**
+     * Compressed Wide Immediate instructions.
+     */
 
     if (strcmp(context->instruction, "c.addi4spn") == 0) {
         if (context->hook == HOOK_BEGIN) {
@@ -476,47 +943,35 @@ void RiscvEmulatorHook(
         }
     }
 
-    if (strcmp(context->instruction, "c.li") == 0 ||
-        strcmp(context->instruction, "c.lui") == 0) {
+    /**
+     * Compressed Load instructions.
+     */
+
+    if (strcmp(context->instruction, "c.lwsp") == 0) {
         if (context->hook == HOOK_BEGIN) {
-            printf(", %s, rd x%u(%s): 0x%08X",
+            printf(", %s, rd x%u(%s): 0x%08X, sp: 0x%08X",
                    context->instruction,
                    rdnum,
                    rdname,
-                   *(uint32_t *)rd);
+                   *(uint32_t *)rd,
+                   *(uint32_t *)sp);
             printInteger(immname, imm, immlength, immissigned);
-            printf("\n");
+            printf(", memorylocation: 0x%08X\n",
+                   memorylocation);
             return;
         } else if (context->hook == HOOK_END) {
-            if (rdnum != 0) {
-                printf("%sx%u(%s) = 0x%08X\n",
-                       tab,
-                       rdnum,
-                       rdname,
-                       *(uint32_t *)rd);
-            }
-            return;
-        }
-    }
-
-    // Zicsr
-    if (strcmp(context->instruction, "ecall") == 0 ||
-        strcmp(context->instruction, "ebreak") == 0) {
-        printf(", %s\n", context->instruction);
-        return;
-    }
-
-    if (strcmp(context->instruction, "mret") == 0) {
-        if (context->hook == HOOK_BEGIN) {
-            printf(", %s\n", context->instruction);
-            return;
-        } else if (context->hook == HOOK_END) {
-            printf("%spc = 0x%08X\n",
+            printf("%sx%u(%s) = 0x%08X\n",
                    tab,
-                   state->programcounternext);
+                   rdnum,
+                   rdname,
+                   *(uint32_t *)rd);
             return;
         }
     }
+
+    /**
+     * Not instructions. Like trap.
+     */
 
 #if (RVE_E_ZICSR == 1)
     if (strcmp(context->instruction, "_trap") == 0) {
@@ -551,17 +1006,10 @@ void RiscvEmulatorHook(
     }
 #endif
 
-    // Zifencei
+    /**
+     * Fallback prints. When hitting this, please add the instruction somewhere above.
+     */
 
-    // Zba
-
-    // Zbb
-
-    // Zbc
-
-    // Zbs
-
-    // Unkown how to print instruction.
     if (context->hook == HOOK_BEGIN ||
         context->hook == HOOK_UNKNOWN) {
         printf(", ");
@@ -573,530 +1021,5 @@ void RiscvEmulatorHook(
            context->instruction,
            context->hook);
 }
-
-/**
- * Debug prints for Register-Register Instructions.
- */
-void RiscvEmulatorRegRegHookBegin(
-    const char *instruction,
-    const RiscvEmulatorState_t *state,
-    const uint8_t rdnum,
-    const void *rd,
-    const uint8_t rs2num,
-    const void *rs2) {
-
-    const char *rdname = RiscvEmulatorGetRegisterSymbolicName(rdnum);
-    const char *rs2name = RiscvEmulatorGetRegisterSymbolicName(rs2num);
-
-#if (RVE_E_C == 1)
-    if (state->instruction.copcode.op != OPCODE16_QUADRANT_INVALID) {
-        printf("pc: 0x%08X, instruction:     0x%04X, %s, rd x%u(%s): 0x%08X, rs2 x%u(%s): 0x%08X\n",
-               state->programcounter,
-               state->instruction.value,
-               instruction,
-               rdnum,
-               rdname,
-               *(uint32_t *)rd,
-               rs2num,
-               rs2name,
-               *(uint32_t *)rs2);
-    } else
-#endif
-    {
-        printf("pc: 0x%08X, instruction: 0x%08X, %s, rd x%u(%s): 0x%08X, rs2 x%u(%s): 0x%08X\n",
-               state->programcounter,
-               state->instruction.value,
-               instruction,
-               rdnum,
-               rdname,
-               *(uint32_t *)rd,
-               rs2num,
-               rs2name,
-               *(uint32_t *)rs2);
-    }
-}
-
-void RiscvEmulatorRegRegHookEnd(
-    const char *instruction,
-    const RiscvEmulatorState_t *state,
-    const uint8_t rdnum,
-    const void *rd,
-    const uint8_t rs2num,
-    const void *rs2) {
-
-    const char *rdname = RiscvEmulatorGetRegisterSymbolicName(rdnum);
-
-    if (rdnum != 0) {
-        printf("x%u(%s) = 0x%08X\n",
-               rdnum,
-               rdname,
-               *(uint32_t *)rd);
-    }
-}
-
-/**
- * Debug print for Stack-relative Store Operations.
- */
-void RiscvEmulatorStackRelativeStoreHookBegin(
-    const char *instruction,
-    const RiscvEmulatorState_t *state,
-    const uint8_t rs2num,
-    const void *rs2,
-    const void *sp,
-    const uint32_t imm,
-    const uint32_t memorylocation) {
-
-    const char *rs2name = RiscvEmulatorGetRegisterSymbolicName(rs2num);
-
-    printf("pc: 0x%08X, instruction:     0x%04X, %s, rs2 x%u(%s): 0x%08X, sp: 0x%08X, imm: 0x%02X(%d), memorylocation: 0x%08X\n",
-           state->programcounter,
-           state->instruction.value,
-           instruction,
-           rs2num,
-           rs2name,
-           *(uint32_t *)rs2,
-           *(uint32_t *)sp,
-           (uint8_t)imm,
-           imm,
-           memorylocation);
-}
-
-/**
- * Debug print for Stack-relative Store Operations.
- */
-void RiscvEmulatorStackRelativeStoreHookEnd(
-    const char *instruction,
-    const RiscvEmulatorState_t *state,
-    const uint8_t rs2num,
-    const void *rs2,
-    const void *sp,
-    const uint32_t imm,
-    const uint32_t memorylocation) {
-
-    printf("                                         0x%08X = 0x%08X\n",
-           memorylocation,
-           *(uint32_t *)rs2);
-}
-
-/**
- * Debug print for Stack-relative Load Operations.
- */
-void RiscvEmulatorStackRelativeLoadHookBegin(
-    const char *instruction,
-    const RiscvEmulatorState_t *state,
-    const uint8_t rdnum,
-    const void *rd,
-    const void *sp,
-    const uint32_t imm,
-    const uint32_t memorylocation) {
-
-    const char *rdname = RiscvEmulatorGetRegisterSymbolicName(rdnum);
-
-    printf("pc: 0x%08X, instruction:     0x%04X, %s, rd x%u(%s): 0x%08X, sp: 0x%08X, imm: 0x%02X(%d), memorylocation: 0x%08X\n",
-           state->programcounter,
-           state->instruction.value,
-           instruction,
-           rdnum,
-           rdname,
-           *(uint32_t *)rd,
-           *(uint32_t *)sp,
-           (uint8_t)imm,
-           imm,
-           memorylocation);
-}
-
-/**
- * Debug print for Stack-relative Load Operations.
- */
-void RiscvEmulatorStackRelativeLoadHookEnd(
-    const char *instruction,
-    const RiscvEmulatorState_t *state,
-    const uint8_t rdnum,
-    const void *rd,
-    const void *sp,
-    const uint32_t imm,
-    const uint32_t memorylocation) {
-
-    const char *rdname = RiscvEmulatorGetRegisterSymbolicName(rdnum);
-
-    printf("x%u(%s) = 0x%08X\n",
-           rdnum,
-           rdname,
-           *(uint32_t *)rd);
-}
-
-/**
- * Debug print for Branch Operations.
- */
-void RiscvEmulatorBranchHookBegin(
-    const char *instruction,
-    const RiscvEmulatorState_t *state,
-    const uint8_t rs1num,
-    const void *rs1,
-    const uint8_t rs2num,
-    const void *rs2,
-    const int16_t imm) {
-
-    const char *rs1name = RiscvEmulatorGetRegisterSymbolicName(rs1num);
-    const char *rs2name = RiscvEmulatorGetRegisterSymbolicName(rs2num);
-
-    // Detect pseudoinstruction BEQZ
-    if (strcmp(instruction, "beq") == 0 &&
-        rs2num == 0) {
-        printf("pc: 0x%08X, instruction: 0x%08X, beqz, rs1 x%u(%s): 0x%08X, imm: 0x%04X(%d)\n",
-               state->programcounter,
-               state->instruction.value,
-               rs1num,
-               rs1name,
-               *(uint32_t *)rs1,
-               (uint16_t)imm,
-               imm);
-        return;
-    }
-
-    // Detect pseudoinstruction BNEZ
-    if (strcmp(instruction, "bne") == 0 &&
-        rs2num == 0) {
-        printf("pc: 0x%08X, instruction: 0x%08X, bnez, rs1 x%u(%s): 0x%08X, imm: 0x%04X(%d)\n",
-               state->programcounter,
-               state->instruction.value,
-               rs1num,
-               rs1name,
-               *(uint32_t *)rs1,
-               (uint16_t)imm,
-               imm);
-        return;
-    }
-
-    // Detect pseudoinstruction BGEZ
-    if (strcmp(instruction, "bge") == 0 &&
-        rs2num == 0) {
-        printf("pc: 0x%08X, instruction: 0x%08X, bgez, rs1 x%u(%s): 0x%08X, imm: 0x%04X(%d)\n",
-               state->programcounter,
-               state->instruction.value,
-               rs1num,
-               rs1name,
-               *(uint32_t *)rs1,
-               (uint16_t)imm,
-               imm);
-        return;
-    }
-
-    // Detect pseudoinstruction BLTZ
-    if (strcmp(instruction, "blt") == 0 &&
-        rs2num == 0) {
-        printf("pc: 0x%08X, instruction: 0x%08X, bltz, rs1 x%u(%s): 0x%08X, imm: 0x%04X(%d)\n",
-               state->programcounter,
-               state->instruction.value,
-               rs1num,
-               rs1name,
-               *(uint32_t *)rs1,
-               (uint16_t)imm,
-               imm);
-        return;
-    }
-
-    // Detect pseudoinstruction BLEZ
-    if (strcmp(instruction, "bge") == 0 &&
-        rs1num == 0) {
-        printf("pc: 0x%08X, instruction: 0x%08X, blez, rs2 x%u(%s): 0x%08X, imm: 0x%04X(%d)\n",
-               state->programcounter,
-               state->instruction.value,
-               rs2num,
-               rs2name,
-               *(uint32_t *)rs2,
-               (uint16_t)imm,
-               imm);
-        return;
-    }
-
-    // Detect pseudoinstruction BGTZ
-    if (strcmp(instruction, "blt") == 0 &&
-        rs1num == 0) {
-        printf("pc: 0x%08X, instruction: 0x%08X, bgtz, rs2 x%u(%s): 0x%08X, imm: 0x%04X(%d)\n",
-               state->programcounter,
-               state->instruction.value,
-               rs2num,
-               rs2name,
-               *(uint32_t *)rs2,
-               (uint16_t)imm,
-               imm);
-        return;
-    }
-
-    printf("pc: 0x%08X, instruction: 0x%08X, %s, rs1 x%u(%s): 0x%08X, rs2 x%u(%s): 0x%08X, imm: 0x%04X(%d)\n",
-           state->programcounter,
-           state->instruction.value,
-           instruction,
-           rs1num,
-           rs1name,
-           *(uint32_t *)rs1,
-           rs2num,
-           rs2name,
-           *(uint32_t *)rs2,
-           (uint16_t)imm,
-           imm);
-}
-
-void RiscvEmulatorBranchHookEnd(
-    const RiscvEmulatorState_t *state) {
-
-    printf("                                         pc = 0x%08X\n",
-           state->programcounternext);
-}
-
-/**
- * Debug print for: AUIPC
- */
-void RiscvEmulatorAUIPCHookBegin(
-    const RiscvEmulatorState_t *state,
-    const uint8_t rdnum,
-    const void *rd,
-    const uint32_t imm31_12,
-    const uint32_t imm) {
-
-    const char *rdname = RiscvEmulatorGetRegisterSymbolicName(rdnum);
-
-    printf("pc: 0x%08X, instruction: 0x%08X, auipc, rd x%u(%s): 0x%08X, imm31_12: 0x%05x (imm: 0x%08X)\n",
-           state->programcounter,
-           state->instruction.value,
-           rdnum,
-           rdname,
-           *(uint32_t *)rd,
-           imm31_12,
-           imm);
-}
-
-void RiscvEmulatorAUIPCHookEnd(
-    const RiscvEmulatorState_t *state,
-    const uint8_t rdnum,
-    const void *rd,
-    const uint32_t imm31_12,
-    const uint32_t imm) {
-
-    const char *rdname = RiscvEmulatorGetRegisterSymbolicName(rdnum);
-
-    printf("x%u(%s) = 0x%08X\n",
-           rdnum,
-           rdname,
-           *(uint32_t *)rd);
-}
-
-/**
- * Debug print for: LUI
- */
-void RiscvEmulatorLUIHookBegin(
-    const RiscvEmulatorState_t *state,
-    const uint8_t rdnum,
-    const void *rd,
-    const uint32_t imm31_12) {
-
-    const char *rdname = RiscvEmulatorGetRegisterSymbolicName(rdnum);
-
-    printf("pc: 0x%08X, instruction: 0x%08X, lui, rd x%u(%s): 0x%08X, imm31_12: 0x%05X\n",
-           state->programcounter,
-           state->instruction.value,
-           rdnum,
-           rdname,
-           *(uint32_t *)rd,
-           imm31_12);
-}
-
-void RiscvEmulatorLUIHookEnd(
-    const RiscvEmulatorState_t *state,
-    const uint8_t rdnum,
-    const void *rd,
-    const uint32_t imm31_12) {
-
-    const char *rdname = RiscvEmulatorGetRegisterSymbolicName(rdnum);
-
-    if (rdnum != 0) {
-        printf("x%u(%s) = 0x%08X\n",
-               rdnum,
-               rdname,
-               *(uint32_t *)rd);
-    }
-}
-
-/**
- * Debug print for: JAL
- */
-void RiscvEmulatorJALHookBegin(
-    const RiscvEmulatorState_t *state,
-    const uint8_t rdnum,
-    const void *rd,
-    const int32_t imm) {
-
-    const char *rdname = RiscvEmulatorGetRegisterSymbolicName(rdnum);
-
-    // Detect pseudoinstruction J
-    if (rdnum == 0) {
-        printf("pc: 0x%08X, instruction: 0x%08X, j, imm: 0x%08X(%d)\n",
-               state->programcounter,
-               state->instruction.value,
-               imm,
-               imm);
-        return;
-    }
-
-    printf("pc: 0x%08X, instruction: 0x%08X, jal, rd x%u(%s): 0x%08X, imm: 0x%08X(%d)\n",
-           state->programcounter,
-           state->instruction.value,
-           rdnum,
-           rdname,
-           *(uint32_t *)rd,
-           imm,
-           imm);
-}
-
-void RiscvEmulatorJALHookEnd(
-    const RiscvEmulatorState_t *state,
-    const uint8_t rdnum,
-    const void *rd,
-    const int32_t imm) {
-
-    const char *rdname = RiscvEmulatorGetRegisterSymbolicName(rdnum);
-
-    if (rdnum != 0) {
-        printf("x%u(%s) = 0x%08X\n",
-               rdnum,
-               rdname,
-               *(uint32_t *)rd);
-    }
-
-    printf("                                         pc = 0x%08X\n",
-           state->programcounternext);
-}
-
-/**
- * Debug print for: JALR
- */
-void RiscvEmulatorJALRHookBegin(
-    const RiscvEmulatorState_t *state,
-    const uint8_t rdnum,
-    const void *rd,
-    const uint8_t rs1num,
-    const void *rs1,
-    const int16_t imm) {
-
-    const char *rdname = RiscvEmulatorGetRegisterSymbolicName(rdnum);
-    const char *rs1name = RiscvEmulatorGetRegisterSymbolicName(rs1num);
-
-    // Detect pseudoinstruction RET
-    if (rdnum == 0 && rs1num == 1 && imm == 0) {
-        printf("pc: 0x%08X, instruction: 0x%08X, ret, rs1 x%u(%s): 0x%08X\n",
-               state->programcounter,
-               state->instruction.value,
-               rs1num,
-               rs1name,
-               *(uint32_t *)rs1);
-        return;
-    }
-
-    // Detect pseudoinstruction JR
-    if (rdnum == 0) {
-        printf("pc: 0x%08X, instruction: 0x%08X, jr, rs1 x%u(%s): 0x%08X imm: 0x%04X\n",
-               state->programcounter,
-               state->instruction.value,
-               rs1num,
-               rs1name,
-               *(uint32_t *)rs1,
-               (uint16_t)imm);
-        return;
-    }
-
-    printf("pc: 0x%08X, instruction: 0x%08X, jalr, rd x%u(%s): 0x%08X, rs1 x%u(%s): 0x%08X, imm: 0x%04X\n",
-           state->programcounter,
-           state->instruction.value,
-           rdnum,
-           rdname,
-           *(uint32_t *)rd,
-           rs1num,
-           rs1name,
-           *(uint32_t *)rs1,
-           (uint16_t)imm);
-}
-
-void RiscvEmulatorJALRHookEnd(
-    const RiscvEmulatorState_t *state,
-    const uint8_t rdnum,
-    const void *rd,
-    const uint8_t rs1num,
-    const void *rs1,
-    const int16_t imm) {
-
-    const char *rdname = RiscvEmulatorGetRegisterSymbolicName(rdnum);
-
-    if (rdnum != 0) {
-        printf("x%u(%s) = 0x%08X\n",
-               rdnum,
-               rdname,
-               *(uint32_t *)rd);
-    }
-
-    printf("                                         pc = 0x%08X\n",
-           state->programcounternext);
-}
-
-#if (RVE_E_ZICSR == 1)
-
-/**
- * Debug prints for CSRR* instructions.
- */
-void RiscvEmulatorCSRR_HookBegin(
-    const char *instruction,
-    const RiscvEmulatorState_t *state,
-    const uint8_t rdnum,
-    const void *rd,
-    const uint8_t rs1num,
-    const void *rs1,
-    const uint16_t csrnum,
-    const void *csr) {
-
-    const char *csrname = RiscvEmulatorGetCSRName(csrnum);
-    const char *rdname = RiscvEmulatorGetRegisterSymbolicName(rdnum);
-    const char *rs1name = RiscvEmulatorGetRegisterSymbolicName(rs1num);
-
-    printf("pc: 0x%08X, instruction: 0x%08X, %s, rd x%u(%s): 0x%08X, rs1 x%u(%s): 0x%08X, csr 0x%04X(%s): 0x%08X\n",
-           state->programcounter,
-           state->instruction.value,
-           instruction,
-           rdnum,
-           rdname,
-           *(uint32_t *)rd,
-           rs1num,
-           rs1name,
-           *(uint32_t *)rs1,
-           csrnum,
-           csrname,
-           *(uint32_t *)csr);
-}
-
-void RiscvEmulatorCSRR_HookEnd(
-    const char *instruction,
-    const RiscvEmulatorState_t *state,
-    const uint8_t rdnum,
-    const void *rd,
-    const uint8_t rs1num,
-    const void *rs1,
-    const uint16_t csrnum,
-    const void *csr) {
-
-    const char *csrname = RiscvEmulatorGetCSRName(csrnum);
-    const char *rdname = RiscvEmulatorGetRegisterSymbolicName(rdnum);
-
-    printf("                                         %s = 0x%08X\n",
-           csrname,
-           *(uint32_t *)csr);
-
-    if (rdnum != 0) {
-        printf("x%u(%s) = 0x%08X\n",
-               rdnum,
-               rdname,
-               *(uint32_t *)rd);
-    }
-}
-
-#endif
 
 #pragma GCC diagnostic pop

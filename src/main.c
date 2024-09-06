@@ -27,9 +27,8 @@ int main() {
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-result"
-    //chdir("/home/marc/Projects/RISC-V-emulator/RISC-V-emulator-RISCOF/riscof_work/rv32i_m/C/src/cadd-01.S/dut");
+    // chdir("/home/marc/Projects/RISC-V-emulator/RISC-V-emulator-RISCOF/riscof_work/rv32i_m/I/src/jalr-01.S/dut");
 #pragma GCC diagnostic pop
-
 
     printf("Reading dut-ram.bin\n");
     FILE *fram = fopen("dut-ram.bin", "r");
