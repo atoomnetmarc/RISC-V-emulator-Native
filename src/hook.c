@@ -86,6 +86,7 @@ void RiscvEmulatorHook(
     const uint32_t memorylocation = context->memorylocation;
     const uint8_t length = context->length;
 
+    const void *ra = &state->registers.symbolic.ra;
     const void *sp = &state->registers.symbolic.sp;
 
     const char *tab = "                                         ";
@@ -865,6 +866,42 @@ void RiscvEmulatorHook(
         }
     }
 
+    if (strcmp(context->instruction, "c.jr") == 0) {
+        if (context->hook == HOOK_BEGIN) {
+            printf(", %s, rs1 x%u(%s): 0x%08X\n",
+                   context->instruction,
+                   rs1num,
+                   rs1name,
+                   *(uint32_t *)rs1);
+            return;
+        } else if (context->hook == HOOK_END) {
+            printf("%spc = 0x%08X\n",
+                   tab,
+                   state->programcounternext);
+            return;
+        }
+    }
+
+    if (strcmp(context->instruction, "c.jalr") == 0) {
+        if (context->hook == HOOK_BEGIN) {
+            printf(", %s, x1(ra): 0x%08X, rs1 x%u(%s): 0x%08X\n",
+                   context->instruction,
+                   *(uint32_t *)ra,
+                   rs1num,
+                   rs1name,
+                   *(uint32_t *)rs1);
+            return;
+        } else if (context->hook == HOOK_END) {
+            printf("%sx1(ra) = 0x%08X\n",
+                   tab,
+                   *(uint32_t *)ra);
+            printf("%spc = 0x%08X\n",
+                   tab,
+                   state->programcounternext);
+            return;
+        }
+    }
+
     /**
      * Compressed Immediate instructions.
      */
@@ -990,6 +1027,52 @@ void RiscvEmulatorHook(
                    rdnum,
                    rdname,
                    *(uint32_t *)rd);
+            return;
+        }
+    }
+
+    /**
+     * Compressed Arithmetic instructions.
+     */
+
+    /**
+     * Compressed Branch instructions.
+     */
+
+    /**
+     * Compressed Jump instructions.
+     */
+
+    if (strcmp(context->instruction, "c.jal") == 0) {
+        if (context->hook == HOOK_BEGIN) {
+            printf(", %s, x1(ra): 0x%08X",
+                   context->instruction,
+                   *(uint32_t *)ra);
+            printInteger(immname, imm, immlength, immissigned);
+            printf("\n");
+            return;
+        } else if (context->hook == HOOK_END) {
+            printf("%sx1(ra) = 0x%08X\n",
+                   tab,
+                   *(uint32_t *)ra);
+            printf("%spc = 0x%08X\n",
+                   tab,
+                   state->programcounternext);
+            return;
+        }
+    }
+
+    if (strcmp(context->instruction, "c.j") == 0) {
+        if (context->hook == HOOK_BEGIN) {
+            printf(", %s",
+                   context->instruction);
+            printInteger(immname, imm, immlength, immissigned);
+            printf("\n");
+            return;
+        } else if (context->hook == HOOK_END) {
+            printf("%spc = 0x%08X\n",
+                   tab,
+                   state->programcounternext);
             return;
         }
     }

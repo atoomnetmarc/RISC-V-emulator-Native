@@ -23,7 +23,15 @@ SPDX-License-Identifier: Apache-2.0
  * @param length The length in bytes of the data.
  */
 static inline void RiscvEmulatorLoadInstruction(uint32_t address, void *destination, uint8_t length) {
-    memcpy(destination, &firmware[address - ROM_ORIGIN], length);
+    uint32_t addressinfirmware = address - ROM_ORIGIN;
+
+    if (addressinfirmware + length >= sizeof(firmware)) {
+        printf("Loading instructions from address after ROM will not work. Stopping emulation.\n");
+        pleasestop = 1;
+        return;
+    }
+
+    memcpy(destination, &firmware[addressinfirmware], length);
 }
 
 /**
