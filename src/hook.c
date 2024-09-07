@@ -820,9 +820,14 @@ void RiscvEmulatorHook(
 
     /**
      * Compressed Register instructions.
+     * Compressed Arithmetic instructions.
      */
 
-    if (strcmp(context->instruction, "c.add") == 0) {
+    if (strcmp(context->instruction, "c.add") == 0 ||
+        strcmp(context->instruction, "c.sub") == 0 ||
+        strcmp(context->instruction, "c.xor") == 0 ||
+        strcmp(context->instruction, "c.or") == 0 ||
+        strcmp(context->instruction, "c.and") == 0) {
         if (context->hook == HOOK_BEGIN) {
             printf(", %s, rs1/rd x%u(%s): 0x%08X, rs2 x%u(%s): 0x%08X",
                    context->instruction,
@@ -1032,12 +1037,30 @@ void RiscvEmulatorHook(
     }
 
     /**
-     * Compressed Arithmetic instructions.
-     */
-
-    /**
      * Compressed Branch instructions.
      */
+
+    if (strcmp(context->instruction, "c.srli") == 0 ||
+        strcmp(context->instruction, "c.srai") == 0 ||
+        strcmp(context->instruction, "c.andi") == 0) {
+        if (context->hook == HOOK_BEGIN) {
+            printf(", %s, rd x%u(%s): 0x%08X",
+                   context->instruction,
+                   rdnum,
+                   rdname,
+                   *(uint32_t *)rd);
+            printInteger(immname, imm, immlength, immissigned);
+            printf("\n");
+            return;
+        } else if (context->hook == HOOK_END) {
+            printf("%sx%u(%s) = 0x%08X\n",
+                   tab,
+                   rdnum,
+                   rdname,
+                   *(uint32_t *)rd);
+            return;
+        }
+    }
 
     /**
      * Compressed Jump instructions.
