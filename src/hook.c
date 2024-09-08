@@ -914,7 +914,8 @@ void RiscvEmulatorHook(
     if (strcmp(context->instruction, "c.li") == 0 ||
         strcmp(context->instruction, "c.lui") == 0 ||
         strcmp(context->instruction, "c.addi") == 0 ||
-        strcmp(context->instruction, "c.addi16sp") == 0) {
+        strcmp(context->instruction, "c.addi16sp") == 0 ||
+        strcmp(context->instruction, "c.slli") == 0) {
         if (context->hook == HOOK_BEGIN) {
             printf(", %s, rd x%u(%s): 0x%08X",
                    context->instruction,
@@ -1058,6 +1059,25 @@ void RiscvEmulatorHook(
                    rdnum,
                    rdname,
                    *(uint32_t *)rd);
+            return;
+        }
+    }
+
+    if (strcmp(context->instruction, "c.beqz") == 0 ||
+        strcmp(context->instruction, "c.bnez") == 0) {
+        if (context->hook == HOOK_BEGIN) {
+            printf(", %s, rs1 x%u(%s): 0x%08X",
+                   context->instruction,
+                   rs1num,
+                   rs1name,
+                   *(uint32_t *)rs1);
+            printInteger(immname, imm, immlength, immissigned);
+            printf("\n");
+            return;
+        } else if (context->hook == HOOK_END) {
+            printf("%spc = 0x%08X\n",
+                   tab,
+                   state->programcounternext);
             return;
         }
     }
