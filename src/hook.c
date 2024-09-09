@@ -515,6 +515,7 @@ void RiscvEmulatorHook(
         return;
     }
 
+#if (RVE_E_ZICSR == 1)
     if (strcmp(context->instruction, "csrrw") == 0 ||
         strcmp(context->instruction, "csrrs") == 0 ||
         strcmp(context->instruction, "csrrc") == 0) {
@@ -577,6 +578,7 @@ void RiscvEmulatorHook(
             return;
         }
     }
+#endif
 
     /**
      * S-type, Compressed Store instructions.
