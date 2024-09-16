@@ -86,8 +86,8 @@ void RiscvEmulatorHook(
     const uint32_t memorylocation = context->memorylocation;
     const uint8_t length = context->length;
 
-    const void *ra = &state->registers.symbolic.ra;
-    const void *sp = &state->registers.symbolic.sp;
+    const void *ra = &state->reg.ra;
+    const void *sp = &state->reg.sp;
 
     const char *tab = "                                         ";
 

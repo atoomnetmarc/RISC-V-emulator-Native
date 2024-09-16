@@ -100,9 +100,9 @@ int main() {
             // pleasestop = 1;
         }
 
-        if (RiscvEmulatorState.registers.name.x0 != 0) {
+        if (RiscvEmulatorState.reg.x[0] != 0) {
             printf("Error: x0 must always be zero. x0 is now 0x%08X. Stop emulation.\n",
-                   RiscvEmulatorState.registers.name.x0);
+                   RiscvEmulatorState.reg.x[0]);
             pleasestop = 1;
         }
 

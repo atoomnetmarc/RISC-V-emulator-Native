@@ -115,9 +115,9 @@ static inline void RiscvEmulatorUnknownCSR(RiscvEmulatorState_t *state) {
  * Handles an ECALL.
  */
 static inline void RiscvEmulatorHandleECALL(RiscvEmulatorState_t *state) {
-    if (state->registers.symbolic.a7 == 93) {
+    if (state->reg.a7 == 93) {
         printf("The ecall requested is exit(%u). This means we are done emulating.\n",
-               state->registers.symbolic.a0);
+               state->reg.a0);
         pleasestop = 1;
     }
 }
