@@ -16,25 +16,6 @@ SPDX-License-Identifier: Apache-2.0
 #define RiscvEmulatorImplementationSpecific_H_
 
 /**
- * Loads a RISC-V instruction from the specified address.
- *
- * @param address The address in bytes of where to read the RISC-V instruction.
- * @param destination The destination address to copy the data to.
- * @param length The length in bytes of the data.
- */
-static inline void RiscvEmulatorLoadInstruction(uint32_t address, void *destination, uint8_t length) {
-    uint32_t addressinfirmware = address - ROM_ORIGIN;
-
-    if (addressinfirmware + length >= sizeof(firmware)) {
-        printf("Loading instructions from address after ROM will not work. Stopping emulation.\n");
-        pleasestop = 1;
-        return;
-    }
-
-    memcpy(destination, &firmware[addressinfirmware], length);
-}
-
-/**
  * Loads bytes from emulator to RISC-V.
  *
  * @param address The byte address in memory.
@@ -49,7 +30,13 @@ static inline void RiscvEmulatorLoad(uint32_t address, void *destination, uint8_
         memcpy(destination, &memory[address - RAM_ORIGIN], length);
     } else if (address >= ROM_ORIGIN) {
         printf("RiscvEmulatorLoad from ROM.\n");
-        memcpy(destination, &firmware[address - ROM_ORIGIN], length);
+        uint32_t addressinfirmware = address - ROM_ORIGIN;
+        if (addressinfirmware + length >= sizeof(firmware)) {
+            printf("Loading instructions from address after ROM will not work. Stopping emulation.\n");
+            pleasestop = 1;
+            return;
+        }
+        memcpy(destination, &firmware[addressinfirmware], length);
     } else if (address >= IO_ORIGIN) {
         printf("Loading from IO does not work.\n");
     }
