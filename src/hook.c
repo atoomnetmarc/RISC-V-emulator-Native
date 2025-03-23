@@ -59,12 +59,15 @@ void RiscvEmulatorHook(
     const void *rd = context->rd;
     const uint8_t rdnum = context->rdnum;
     const char *rdname = RiscvEmulatorGetRegisterSymbolicName(rdnum);
+    const char *fprdname = RiscvEmulatorGetFloatingPointRegisterSymbolicName(rdnum);
     const void *rs1 = context->rs1;
     const uint8_t rs1num = context->rs1num;
     const char *rs1name = RiscvEmulatorGetRegisterSymbolicName(rs1num);
+    const char *fprs1name = RiscvEmulatorGetFloatingPointRegisterSymbolicName(rs1num);
     const void *rs2 = context->rs2;
     const uint8_t rs2num = context->rs2num;
     const char *rs2name = RiscvEmulatorGetRegisterSymbolicName(rs2num);
+    const char *fprs2name = RiscvEmulatorGetFloatingPointRegisterSymbolicName(rs2num);
 
 #if (RVE_E_ZICSR == 1)
     const uint16_t csrnum = context->csrnum;
@@ -229,6 +232,43 @@ void RiscvEmulatorHook(
                        rdname,
                        *(uint32_t *)rd);
             }
+            return;
+        }
+    }
+
+    /**
+     * R-type, Floating Point Register-Register instructions.
+     *
+     * prints fd, fs1 and fs2.
+     */
+
+    if (strcmp(context->instruction, "fadd.s") == 0 ||
+        strcmp(context->instruction, "fsub.s") == 0 ||
+        strcmp(context->instruction, "fmul.s") == 0 ||
+        strcmp(context->instruction, "fdiv.s") == 0) {
+        if (context->hook == HOOK_BEGIN) {
+            printf(", %s, fd f%u(%s): 0x%08X(%f), fs1 f%u(%s): 0x%08X(%f), fs2 f%u(%s): 0x%08X(%f)\n",
+                   context->instruction,
+                   rdnum,
+                   fprdname,
+                   *(uint32_t *)rd,
+                   *(float *)rd,
+                   rs1num,
+                   fprs1name,
+                   *(uint32_t *)rs1,
+                   *(float *)rs1,
+                   rs2num,
+                   fprs2name,
+                   *(uint32_t *)rs2,
+                   *(float *)rs2);
+            return;
+        } else if (context->hook == HOOK_END) {
+            printf("%sf%u(%s) = 0x%08X(%f)\n",
+                   tab,
+                   rdnum,
+                   fprdname,
+                   *(uint32_t *)rd,
+                   *(float *)rd);
             return;
         }
     }
@@ -406,9 +446,11 @@ void RiscvEmulatorHook(
     /**
      * I-type Load instructions.
      *
-     * prints rd, rs1, imm and memory location.
      */
 
+    /**
+     * prints rd, rs1, imm and memory location.
+     */
     if (strcmp(context->instruction, "lb") == 0 ||
         strcmp(context->instruction, "lbu") == 0 ||
         strcmp(context->instruction, "lh") == 0 ||
@@ -479,6 +521,36 @@ void RiscvEmulatorHook(
                        rdname,
                        *(uint32_t *)rd);
             }
+            return;
+        }
+    }
+
+    /**
+     * prints fd, fs1, imm and memory location.
+     */
+    if (strcmp(context->instruction, "flw") == 0) {
+        if (context->hook == HOOK_BEGIN) {
+            printf(", %s, fd f%u(%s): 0x%08X(%f), fs1 f%u(%s): 0x%08X(%f)",
+                   context->instruction,
+                   rdnum,
+                   fprdname,
+                   *(uint32_t *)rd,
+                   *(float *)rd,
+                   rs1num,
+                   fprs1name,
+                   *(uint32_t *)rs1,
+                   *(float *)rs1);
+            printInteger(immname, imm, immlength, immissigned);
+            printf(", memorylocation: 0x%08X\n",
+                   memorylocation);
+            return;
+        } else if (context->hook == HOOK_END) {
+            printf("%sf%u(%s) = 0x%08X(%f)\n",
+                   tab,
+                   rdnum,
+                   fprdname,
+                   *(uint32_t *)rd,
+                   *(float *)rd);
             return;
         }
     }
@@ -581,11 +653,14 @@ void RiscvEmulatorHook(
 #endif
 
     /**
-     * S-type, Compressed Store instructions.
+     * S-type.
      *
-     * prints rs1, rs2, imm and memory location.
      */
 
+    /**
+     * (Compressed) Store instructions.
+     * prints rs1, rs2, imm and memory location.
+     */
     if (strcmp(context->instruction, "sb") == 0 ||
         strcmp(context->instruction, "sh") == 0 ||
         strcmp(context->instruction, "sw") == 0 ||
@@ -620,6 +695,34 @@ void RiscvEmulatorHook(
                        memorylocation,
                        *(uint32_t *)rs2);
             }
+            return;
+        }
+    }
+
+    /**
+     * Floating Point Store instructions.
+     * prints rs1, fs2, imm and memory location.
+     */
+    if (strcmp(context->instruction, "fsw") == 0) {
+        if (context->hook == HOOK_BEGIN) {
+            printf(", %s, rs1 x%u(%s): 0x%08X, fs2 f%u(%s): 0x%08X(%f)",
+                   context->instruction,
+                   rs1num,
+                   rs1name,
+                   *(uint32_t *)rs1,
+                   rs2num,
+                   fprs2name,
+                   *(uint32_t *)rs2,
+                   *(float *)rs2);
+            printInteger(immname, imm, immlength, immissigned);
+            printf(", memorylocation: 0x%08X\n",
+                   memorylocation);
+            return;
+        } else if (context->hook == HOOK_END) {
+            printf("%s0x%08X = 0x%08X\n",
+                   tab,
+                   memorylocation,
+                   *(uint32_t *)rs2);
             return;
         }
     }
