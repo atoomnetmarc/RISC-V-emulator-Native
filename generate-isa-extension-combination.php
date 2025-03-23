@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Copyright 2023-2024 Marc Ketel
+ * Copyright 2023-2025 Marc Ketel
  * SPDX-License-Identifier: Apache-2.0
  *
  * Try to generate all the extension subset combinations for use in platformio_isa-extension-combination_env.ini to compile the emulator.
@@ -38,19 +38,15 @@ $subset = [
     'A' => [
         '-D RVE_E_A=1',
     ],
-    /*
     'F' => [
         '-D RVE_E_F=1',
         '-D RVE_E_ZICSR=1',
     ],
-    */
-    /*
     'D' => [
         '-D RVE_E_D=1',
         '-D RVE_E_F=1',
         '-D RVE_E_ZICSR=1',
     ],
-    */
     'C' => [
         '-D RVE_E_C=1',
     ],
