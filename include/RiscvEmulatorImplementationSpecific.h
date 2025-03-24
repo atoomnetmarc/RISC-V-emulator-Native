@@ -29,6 +29,7 @@ static inline void RiscvEmulatorLoad(uint32_t address, void *destination, uint8_
     } else if (address >= RAM_ORIGIN) {
         memcpy(destination, &memory[address - RAM_ORIGIN], length);
     } else if (address >= ROM_ORIGIN) {
+        printf("RiscvEmulatorLoad from ROM.\n");
         uint32_t addressinfirmware = address - ROM_ORIGIN;
         if (addressinfirmware + length >= sizeof(firmware)) {
             printf("Loading instructions from address after ROM will not work. Stopping emulation.\n");
