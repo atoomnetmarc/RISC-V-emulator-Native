@@ -29,49 +29,57 @@ $baseIntegerISA = [
  *
  * The first define of each extension enables the extension, the following defines are dependencies of that extension.
  *
- * Sort subset the same as: https://gcc.gnu.org/onlinedocs/gcc/RISC-V-Options.html#index-march-14
+ * Sort extension and subsets the same as: https://gcc.gnu.org/onlinedocs/gcc/RISC-V-Options.html
  */
 $subset = [
-    'M' => [
+    'M' => ['define' => [
         '-D RVE_E_M=1',
-    ],
-    'A' => [
+    ]],
+    'A' => ['define' => [
         '-D RVE_E_A=1',
-    ],
+    ]],
     /*
-    'F' => [
+    'F' => [ 'define' => [
         '-D RVE_E_F=1',
         '-D RVE_E_ZICSR=1',
-    ],
+    ]],
     */
     /*
-    'D' => [
+    'D' => [ 'define' => [
         '-D RVE_E_D=1',
         '-D RVE_E_F=1',
         '-D RVE_E_ZICSR=1',
-    ],
+    ]],
     */
-    'C' => [
+    'C' => ['define' => [
         '-D RVE_E_C=1',
-    ],
-    'Zicsr' => [
-        '-D RVE_E_ZICSR=1',
-    ],
-    'Zifencei' => [
-        '-D RVE_E_ZIFENCEI=1',
-    ],
-    'Zba' => [
+    ]],
+    'B' => ['define' => [
+        '-D RVE_E_B=1',
+    ], 'exclude' => [
         '-D RVE_E_ZBA=1',
-    ],
-    'Zbb' => [
         '-D RVE_E_ZBB=1',
-    ],
-    'Zbc' => [
         '-D RVE_E_ZBC=1',
-    ],
-    'Zbs' => [
         '-D RVE_E_ZBS=1',
-    ],
+    ]],
+    'Zicsr' => ['define' => [
+        '-D RVE_E_ZICSR=1',
+    ]],
+    'Zifencei' => ['define' => [
+        '-D RVE_E_ZIFENCEI=1',
+    ]],
+    'Zba' => ['define' => [
+        '-D RVE_E_ZBA=1',
+    ]],
+    'Zbb' => ['define' => [
+        '-D RVE_E_ZBB=1',
+    ]],
+    'Zbc' => ['define' => [
+        '-D RVE_E_ZBC=1',
+    ]],
+    'Zbs' => ['define' => [
+        '-D RVE_E_ZBS=1',
+    ]],
 ];
 
 
@@ -123,7 +131,7 @@ function getUniqueValuesFromCombination($combination, $subset)
 {
     $uniqueValues = [];
     foreach ($combination as $key) {
-        foreach ($subset[$key] as $value) {
+        foreach ($subset[$key]['define'] as $value) {
             if (!in_array($value, $uniqueValues)) {
                 $uniqueValues[] = $value;
             }
@@ -166,15 +174,19 @@ function getISAString($baseISA, $subset)
  */
 function legalCombination($subset, $subsetKeyCombination)
 {
-    foreach($subsetKeyCombination as $subsetKey) {
-        $subsetDependencies = $subset[$subsetKey];
-        array_shift($subsetDependencies);
+    foreach ($subsetKeyCombination as $subsetKey) {
+        $subsetDefines = $subset[$subsetKey]['define'];
+        // Skip the first define (the extension itself) - the rest are dependencies
+        $subsetDependencies = array_slice($subsetDefines, 1);
 
         // Test if dependencies can be found.
-        foreach($subsetDependencies as $subsetDependency) {
+        foreach ($subsetDependencies as $subsetDependency) {
             $dependencyFound = false;
-            foreach(array_intersect_key($subset, array_flip($subsetKeyCombination)) as $s) {
-                if ($s[0] == $subsetDependency) {
+            foreach ($subsetKeyCombination as $key) {
+                if ($key === $subsetKey) continue; // skip current extension
+
+                // Check if this extension provides the dependency
+                if (in_array($subsetDependency, $subset[$key]['define'])) {
                     $dependencyFound = true;
                     break;
                 }
@@ -182,6 +194,20 @@ function legalCombination($subset, $subsetKeyCombination)
 
             if (!$dependencyFound) {
                 return false;
+            }
+        }
+
+        // Check for excluded defines if this extension has them
+        if (isset($subset[$subsetKey]['exclude'])) {
+            foreach ($subset[$subsetKey]['exclude'] as $excludedDefine) {
+                foreach ($subsetKeyCombination as $key) {
+                    if ($key === $subsetKey) continue; // skip current extension
+
+                    // Check if any other extension includes the excluded define
+                    if (in_array($excludedDefine, $subset[$key]['define'])) {
+                        return false;
+                    }
+                }
             }
         }
     }
