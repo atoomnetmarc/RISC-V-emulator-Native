@@ -2,6 +2,8 @@
 
 This document specifies the code changes needed in this emulator to run ACT4 self-checking ELFs. The integration plan and milestones live in `RISC-V-emulator-ACT/plans/`.
 
+> **Status: ALL CHANGES IMPLEMENTED** (2026-08-27). Every change below has been applied and verified to build with `-Wall -Wextra -Werror` for the `RV32I`, `RV32IC`, and `RV32IMACZicsr` environments.
+
 The emulator loads a raw binary produced by `objcopy` from an ACT4 ELF. The binary starts at address `0x80000000` (`RAM_ORIGIN`). The emulator boots at `0x80000000`.
 
 ---
@@ -18,7 +20,7 @@ These match the `rvmodel_macros.h` in `RISC-V-emulator-ACT/config/cores/atoomnet
 
 ---
 
-## Change 1: UART store hook at `0x10000000`
+## Change 1: UART store hook at `0x10000000` — ✅ DONE
 
 File: `include/RiscvEmulatorImplementationSpecific.h`, function `RiscvEmulatorStore`.
 
@@ -39,7 +41,7 @@ if (address == 0x10000000) {
 
 ---
 
-## Change 2: HALT store hook at `0x20000000`
+## Change 2: HALT store hook at `0x20000000` — ✅ DONE
 
 File: `include/RiscvEmulatorImplementationSpecific.h`, function `RiscvEmulatorStore`.
 
@@ -71,7 +73,7 @@ Ignore the second store to `0x20000004`. The value `123456789` means pass; any o
 
 ---
 
-## Change 3: Load a single binary from `argv[1]`
+## Change 3: Load a single binary from `argv[1]` — ✅ DONE
 
 File: `src/main.c`.
 
@@ -107,7 +109,7 @@ int main(int argc, char *argv[]) {
 
 ---
 
-## Change 4: Delete dead code
+## Change 4: Delete dead code — ✅ DONE
 
 File: `src/main.c`.
 
@@ -129,7 +131,7 @@ Delete the ROM branches in `RiscvEmulatorLoad` and `RiscvEmulatorStore`. The `fi
 
 ---
 
-## Change 5: Return the test result
+## Change 5: Return the test result — ✅ DONE
 
 File: `src/main.c`.
 
