@@ -93,6 +93,7 @@ int main(int argc, char *argv[]) {
         return 2;
     }
     size_t binsize = fread(memory, sizeof(uint8_t), sizeof(memory), fbin);
+    printf("Read %zu bytes.\n", binsize);
     fclose(fbin);
 
     RiscvEmulatorInit(&RiscvEmulatorState, sizeof(memory));
