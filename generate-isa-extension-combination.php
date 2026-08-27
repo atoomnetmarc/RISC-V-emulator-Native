@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Copyright 2023-2025 Marc Ketel
+ * Copyright Marc Ketel
  * SPDX-License-Identifier: Apache-2.0
  *
  * Try to generate all the extension subset combinations for use in platformio_isa-extension-combination_env.ini to compile the emulator.
