@@ -96,7 +96,12 @@ int main(int argc, char *argv[]) {
     fclose(fbin);
 
     RiscvEmulatorInit(&RiscvEmulatorState, sizeof(memory));
-    // PC starts at 0x80000000 (RAM_ORIGIN), the reset vector.
+
+    // RiscvEmulatorInit sets the PC to ROM_ORIGIN (0x20000000). ACT4 places
+    // all code and data in RAM at RAM_ORIGIN (0x80000000), so override the PC
+    // after init. Without this the emulator boots at the HALT region and crashes.
+    RiscvEmulatorState.programcounter = RAM_ORIGIN;
+    RiscvEmulatorState.programcounternext = RAM_ORIGIN;
 ```
 
 ---
@@ -107,16 +112,19 @@ File: `src/main.c`.
 
 Delete:
 
-- The `firmware[]` array and its uses (ROM is unused; ACT4 places everything in RAM).
 - The `dut-rom.bin` read.
 - The `dut-ram-signature_begin_end.txt` read and the `signaturebegin` / `signatureend` logic.
 - The `dut-ram-after.bin` write.
 - The `DUT-rve.signature` write and its loop.
-- The `maxloopcounter` logic based on ROM size. Replace with a fixed large limit or remove it (the HALT hook stops the emulator).
+- The `maxloopcounter` logic based on ROM size. Replace with a fixed large limit as a safety net against a test that never halts.
 
 File: `include/memory.h`.
 
-Delete the `firmware[]` array if no other code references it.
+Delete the `firmware[]` array.
+
+File: `include/RiscvEmulatorImplementationSpecific.h`.
+
+Delete the ROM branches in `RiscvEmulatorLoad` and `RiscvEmulatorStore`. The `firmware[]` array is referenced in both functions (the `address >= ROM_ORIGIN` branches). Removing `firmware[]` without removing these branches breaks compilation. ACT4 places everything in RAM, so ROM is unused. After removal, `RiscvEmulatorLoad` handles only `RAM_ORIGIN` addresses, and `RiscvEmulatorStore` handles `RAM_ORIGIN`, the UART hook (`0x10000000`), and the HALT hook (`0x20000000`).
 
 ---
 
@@ -143,7 +151,8 @@ After the emulation loop, return the test result:
 
 ## What stays the same
 
-- `RiscvEmulatorInit` and `RiscvEmulatorLoop` are unchanged.
-- The `RiscvEmulatorLoad` function is unchanged (loads from `memory[]` for `RAM_ORIGIN` addresses).
-- The `RiscvEmulatorIllegalInstruction`, `RiscvEmulatorUnknownCSR`, `RiscvEmulatorHandleECALL`, and `RiscvEmulatorHandleEBREAK` hooks are unchanged. The `ecall a7=93` path in `RiscvEmulatorHandleECALL` becomes unreachable for ACT4 tests (they use the HALT store hook), but leave it in place; it does no harm.
+- `RiscvEmulatorLoop` is unchanged.
+- `RiscvEmulatorInit` is called unchanged, but the PC it sets (`ROM_ORIGIN`) is overridden in `main.c` to `RAM_ORIGIN` (see Change 3).
+- `RiscvEmulatorLoad` loses its ROM branch (see Change 4) but keeps its RAM branch unchanged.
+- `RiscvEmulatorIllegalInstruction`, `RiscvEmulatorUnknownCSR`, `RiscvEmulatorHandleECALL`, and `RiscvEmulatorHandleEBREAK` are unchanged. The `ecall a7=93` path in `RiscvEmulatorHandleECALL` becomes unreachable for ACT4 tests (they use the HALT store hook), but leave it in place; it does no harm.
 - The build flags (`RVE_E_*`) are set per config by the PlatformIO environment, not by this file.
