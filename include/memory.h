@@ -21,4 +21,7 @@ uint8_t pleasestop;
 // 123456789 means pass; any other value means fail.
 extern uint32_t testresult;
 
+// Verbose instruction tracing, enabled with the -v command-line flag.
+extern uint8_t verbose;
+
 #endif

@@ -7,6 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 #include <RiscvEmulator.h>
@@ -21,9 +22,22 @@ size_t loopcounter = 0;
 
 uint32_t testresult = 0;
 
+uint8_t verbose = 0;
+
 int main(int argc, char *argv[]) {
-    if (argc < 2) {
-        printf("Usage: %s <binary>\n", argv[0]);
+    // Parse -v to enable verbose instruction tracing. The binary path is the
+    // last argument; run_tests.py passes it via elf2bin.sh.
+    const char *binpath = NULL;
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-v") == 0) {
+            verbose = 1;
+        } else {
+            binpath = argv[i];
+        }
+    }
+
+    if (binpath == NULL) {
+        printf("Usage: %s [-v] <binary>\n", argv[0]);
         return 2;
     }
 
@@ -31,18 +45,22 @@ int main(int argc, char *argv[]) {
     setvbuf(stdout, NULL, _IONBF, 0);
     pleasestop = 0;
 
-    // Load the raw binary (objcopy -O binary output) directly into RAM.
+    // Load the actual binary (objcopy -O binary output) directly into RAM.
     // Its byte 0 corresponds to address 0x80000000 (RAM_ORIGIN).
-    FILE *fbin = fopen(argv[1], "rb");
+    FILE *fbin = fopen(binpath, "rb");
     if (fbin == NULL) {
-        printf("file not found: %s\n", argv[1]);
+        printf("file not found: %s\n", binpath);
         return 2;
     }
     size_t binsize = fread(memory, sizeof(uint8_t), sizeof(memory), fbin);
-    printf("Read %zu bytes.\n", binsize);
+    if (verbose) {
+        printf("Read %zu bytes.\n", binsize);
+    }
     fclose(fbin);
 
-    printf("RiscvEmulatorInit()\n");
+    if (verbose) {
+        printf("RiscvEmulatorInit()\n");
+    }
 
     RiscvEmulatorInit(&RiscvEmulatorState, sizeof(memory));
 
@@ -84,7 +102,9 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    printf("Simulated %zu CPU instructions.\n", loopcounter);
+    if (verbose) {
+        printf("Simulated %zu CPU instructions.\n", loopcounter);
+    }
 
     if (testresult == 123456789) {
         return 0;
