@@ -23,13 +23,11 @@ SPDX-License-Identifier: Apache-2.0
  * @param length The length in bytes of the data.
  */
 static inline void RiscvEmulatorLoad(uint32_t address, void *destination, uint8_t length) {
-    if (address >= RAM_ORIGIN + RAM_LENGTH) {
-        printf("Loading from address after RAM will not work. Stopping emulation.\n");
+    if (address < RAM_ORIGIN || address >= RAM_ORIGIN + RAM_LENGTH) {
+        printf("Loading from outside RAM does not work. Stopping emulation.\n");
         pleasestop = 1;
-    } else if (address >= RAM_ORIGIN) {
-        memcpy(destination, &memory[address - RAM_ORIGIN], length);
     } else {
-        printf("Loading from outside RAM does not work.\n");
+        memcpy(destination, &memory[address - RAM_ORIGIN], length);
     }
 }
 
