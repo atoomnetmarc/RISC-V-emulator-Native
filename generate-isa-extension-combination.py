@@ -29,7 +29,12 @@ BASE_INTEGER_ISA = {
 # Sort extension and subsets the same as:
 # https://gcc.gnu.org/onlinedocs/gcc/RISC-V-Options.html
 SUBSET = {
-    "M": {"define": ["-D RVE_E_M=1"]},
+    "M": {
+        "define": ["-D RVE_E_M=1"],
+        "exclude": [
+            "-D RVE_E_ZMMUL=1",
+        ],
+    },
     "A": {
         "define": ["-D RVE_E_A=1"],
         "exclude": [
@@ -51,6 +56,7 @@ SUBSET = {
     },
     "Zaamo": {"define": ["-D RVE_E_ZAAMO=1"]},
     "Zalrsc": {"define": ["-D RVE_E_ZALRSC=1"]},
+    "Zmmul": {"define": ["-D RVE_E_ZMMUL=1"]},
     "Zicsr": {"define": ["-D RVE_E_ZICSR=1"]},
     "Zifencei": {"define": ["-D RVE_E_ZIFENCEI=1"]},
     "Zba": {"define": ["-D RVE_E_ZBA=1"]},
