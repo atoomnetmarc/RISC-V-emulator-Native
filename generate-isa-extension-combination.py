@@ -71,6 +71,7 @@ def main() -> None:
             isa = get_isa_string(bi_key, list(subset_key_combination))
 
             print(f"[env:{isa}]")
+            print(f"# act-config: rve-{isa.lower()}")
             for act_line in get_act_lines(subset_key_combination):
                 print(f"# {act_line}")
             print("extends           = common")
