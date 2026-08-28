@@ -1,6 +1,6 @@
 /*
 
-Copyright 2023-2025 Marc Ketel
+Copyright Marc Ketel
 SPDX-License-Identifier: Apache-2.0
 
 */
@@ -14,6 +14,9 @@ SPDX-License-Identifier: Apache-2.0
 #include <RiscvEmulatorDefineOpcode.h>
 #include <RiscvEmulatorTypeEmulator.h>
 #include <RiscvEmulatorTypeHook.h>
+
+// Verbose flag set by main.c via the -v command-line option.
+extern uint8_t verbose;
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
@@ -55,6 +58,12 @@ void printInteger(
 void RiscvEmulatorHook(
     const RiscvEmulatorState_t *state,
     const RiscvEmulatorHookContext_t *context) {
+
+    // Instruction tracing is opt-in via the -v flag. Without it the hook stays
+    // silent so the RVCP-SUMMARY line is the only stdout output.
+    if (verbose == 0) {
+        return;
+    }
 
     const void *rd = context->rd;
     const uint8_t rdnum = context->rdnum;

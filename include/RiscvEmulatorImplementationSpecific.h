@@ -1,6 +1,6 @@
 /*
 
-Copyright 2023-2025 Marc Ketel
+Copyright Marc Ketel
 SPDX-License-Identifier: Apache-2.0
 
 */
@@ -23,22 +23,11 @@ SPDX-License-Identifier: Apache-2.0
  * @param length The length in bytes of the data.
  */
 static inline void RiscvEmulatorLoad(uint32_t address, void *destination, uint8_t length) {
-    if (address >= RAM_ORIGIN + RAM_LENGTH) {
-        printf("Loading from address after RAM will not work. Stopping emulation.\n");
+    if (address < RAM_ORIGIN || address >= RAM_ORIGIN + RAM_LENGTH) {
+        printf("Loading from outside RAM does not work. Stopping emulation.\n");
         pleasestop = 1;
-    } else if (address >= RAM_ORIGIN) {
+    } else {
         memcpy(destination, &memory[address - RAM_ORIGIN], length);
-    } else if (address >= ROM_ORIGIN) {
-        printf("RiscvEmulatorLoad from ROM.\n");
-        uint32_t addressinfirmware = address - ROM_ORIGIN;
-        if (addressinfirmware + length >= sizeof(firmware)) {
-            printf("Loading instructions from address after ROM will not work. Stopping emulation.\n");
-            pleasestop = 1;
-            return;
-        }
-        memcpy(destination, &firmware[addressinfirmware], length);
-    } else if (address >= IO_ORIGIN) {
-        printf("Loading from IO does not work.\n");
     }
 }
 
@@ -50,16 +39,30 @@ static inline void RiscvEmulatorLoad(uint32_t address, void *destination, uint8_
  * @param length The length in bytes of the data.
  */
 static inline void RiscvEmulatorStore(uint32_t address, const void *source, uint8_t length) {
+    // UART console output. ACT4 RVMODEL_IO_WRITE_STR writes each character as a
+    // word (sw) to 0x10000000. The character is in the low byte. Emit it to stdout.
+    if (address == 0x10000000) {
+        uint8_t ch;
+        memcpy(&ch, source, 1);
+        putchar(ch);
+        return;
+    }
+
+    // HALT test termination. RVMODEL_HALT_PASS writes 123456789 to 0x20000000;
+    // RVMODEL_HALT_FAIL writes 1. Both end in an infinite self-loop, so stop here.
+    if (address == 0x20000000) {
+        memcpy(&testresult, source, 4);
+        pleasestop = 1;
+        return;
+    }
+
     if (address >= RAM_ORIGIN + RAM_LENGTH) {
         printf("Writing to address after RAM will not work. Stopping emulation.\n");
         pleasestop = 1;
     } else if (address >= RAM_ORIGIN) {
         memcpy(&memory[address - RAM_ORIGIN], source, length);
-    } else if (address >= ROM_ORIGIN) {
-        printf("RiscvEmulatorStore to ROM.\n");
-        memcpy(&firmware[address - ROM_ORIGIN], source, length);
-    } else if (address >= IO_ORIGIN) {
-        printf("Writing to IO does not work.\n");
+    } else {
+        printf("Writing to outside RAM does not work.\n");
     }
 }
 
