@@ -32,7 +32,10 @@ SUBSET = {
     "M": {"define": ["-D RVE_E_M=1"]},
     "A": {
         "define": ["-D RVE_E_A=1"],
-        "act": ["act-exclude-extensions: Zalrsc"],
+        "exclude": [
+            "-D RVE_E_ZAAMO=1",
+            "-D RVE_E_ZALRSC=1",
+        ],
     },
     # "F": {"define": ["-D RVE_E_F=1", "-D RVE_E_ZICSR=1"]},
     # "D": {"define": ["-D RVE_E_D=1", "-D RVE_E_F=1", "-D RVE_E_ZICSR=1"]},
@@ -46,6 +49,8 @@ SUBSET = {
             "-D RVE_E_ZBS=1",
         ],
     },
+    "Zaamo": {"define": ["-D RVE_E_ZAAMO=1"]},
+    "Zalrsc": {"define": ["-D RVE_E_ZALRSC=1"]},
     "Zicsr": {"define": ["-D RVE_E_ZICSR=1"]},
     "Zifencei": {"define": ["-D RVE_E_ZIFENCEI=1"]},
     "Zba": {"define": ["-D RVE_E_ZBA=1"]},
@@ -115,6 +120,7 @@ def get_unique_values_from_combination(combination: list, subset: dict) -> list:
 
 def get_isa_string(base_isa: str, subset: list) -> str:
     isa = base_isa
+
 
     # Detect G extension.
     gsubset = ["I", "M", "A", "F", "D", "Zicsr", "Zifencei"]
