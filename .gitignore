@@ -6,3 +6,5 @@
 .vscode
 
 binaries/
+
+__pycache__
