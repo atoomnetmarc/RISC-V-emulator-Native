@@ -102,9 +102,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    if (verbose) {
-        printf("Simulated %zu CPU instructions.\n", loopcounter);
-    }
+    printf("Simulated %zu CPU instructions.\n", loopcounter);
 
     if (testresult == 123456789) {
         return 0;
