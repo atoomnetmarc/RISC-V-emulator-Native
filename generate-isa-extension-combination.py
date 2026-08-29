@@ -2,13 +2,33 @@
 # Copyright Marc Ketel
 # SPDX-License-Identifier: Apache-2.0
 #
-# Generate all the extension subset combinations for use in
+# Generate extension subset combinations for use in
 # platformio_isa-extension-combination_env.ini to compile the emulator.
 #
 # Generate command:
 #   python3 generate-isa-extension-combination.py > platformio_isa-extension-combination_env.ini
 #
-# The list of combinations might be a bit much.
+# By default a covering array of strength COVERING_STRENGTH is generated:
+# every legal combination of COVERING_STRENGTH extensions appears together in
+# at least one build, plus every extension alone. This is a mathematically
+# minimal-ish proof that extensions work alone and in combination, without
+# exhaustively building all 2^N combinations.
+#
+# Use --full to generate the exhaustive set of all legal combinations instead.
+#
+# Envs marked with "# smoke" are the smoke-test subset:
+#  - default mode: every env (the array already is the fast set)
+#  - --full mode:  every single-extension env plus every maximal legal
+#                  combination (maximal under extension-set inclusion)
+
+import argparse
+import itertools
+import random
+
+COVERING_STRENGTH = 4
+GREEDY_TRIALS = 30
+GREEDY_CANDIDATES = 200
+SEED = 0
 
 BASE_INTEGER_ISA = {
     "RV32I": [],
@@ -67,23 +87,50 @@ SUBSET = {
 
 
 def main() -> None:
-    subset_key_combinations = generate_key_combinations(list(SUBSET))
+    parser = argparse.ArgumentParser(
+        description="Generate ISA extension combination envs."
+    )
+    parser.add_argument(
+        "--full",
+        action="store_true",
+        help="generate the exhaustive set of all legal combinations "
+        "instead of a covering array",
+    )
+    args = parser.parse_args()
+
+    keys = list(SUBSET)
+    all_legal = [
+        comb for size in range(len(keys) + 1)
+        for comb in itertools.combinations(keys, size)
+        if legal_combination(SUBSET, list(comb))
+    ]
+
+    if args.full:
+        combinations = all_legal
+        # Smoke subset: singles plus every maximal legal combination.
+        smoke = set(
+            comb for comb in all_legal if len(comb) <= 1
+        ) | set(maximal_combinations(all_legal))
+    else:
+        singles = [comb for comb in all_legal if len(comb) == 1]
+        array = covering_array(all_legal, COVERING_STRENGTH)
+        combinations = singles + array
+        # In default mode the whole set is the smoke subset.
+        smoke = set(combinations)
 
     for bi_key, bi_value in BASE_INTEGER_ISA.items():
-        for subset_key_combination in subset_key_combinations:
-            # Skip illegal combinations like D without F.
-            if not legal_combination(SUBSET, subset_key_combination):
-                continue
-
+        for subset_key_combination in combinations:
             unique_values = get_unique_values_from_combination(
-                subset_key_combination, SUBSET
+                list(subset_key_combination), SUBSET
             )
 
             isa = get_isa_string(bi_key, list(subset_key_combination))
 
             print(f"[env:{isa}]")
             print(f"# act-config: rve-{isa.lower()}")
-            for act_line in get_act_lines(subset_key_combination):
+            if subset_key_combination in smoke:
+                print("# smoke")
+            for act_line in get_act_lines(list(subset_key_combination)):
                 print(f"# {act_line}")
             print("extends           = common")
             print("build_flags       =")
@@ -93,25 +140,86 @@ def main() -> None:
             print()
 
 
+def maximal_combinations(combinations: list) -> list:
+    """Return the combinations that are maximal under set inclusion."""
+    maximal = []
+    for comb in combinations:
+        s = set(comb)
+        if not any(s < set(other) for other in combinations):
+            maximal.append(comb)
+    return maximal
+
+
+def covering_array(legal: list, strength: int) -> list:
+    """
+    Greedy randomized search for a covering array of the given strength over
+    the legal combinations. Deterministic via SEED. Returns a list of
+    combinations (tuples of subset keys) such that every legal
+    strength-sized subcombination with every on/off pattern that occurs in
+    some legal combination is covered by at least one row.
+    """
+    legal_sets = [frozenset(comb) for comb in legal]
+    legal_by_size = {}
+    for comb in legal:
+        legal_by_size.setdefault(len(comb), []).append(comb)
+
+    # Required coverage items: (subcombination, pattern) where the pattern
+    # (which members of the subcombination are on) is realized by at least
+    # one legal combination.
+    required = set()
+    for comb in legal:
+        for sub in itertools.combinations(comb, strength):
+            required.add((sub, frozenset(sub)))
+
+    if not required:
+        return []
+
+    random.seed(SEED)
+    best_rows = None
+    for _ in range(GREEDY_TRIALS):
+        rows = []
+        remaining = set(required)
+        while remaining:
+            best_row, best_cov = None, -1
+            for _ in range(GREEDY_CANDIDATES):
+                size = random.randint(0, len(SUBSET))
+                candidates = legal_by_size.get(size, [])
+                if not candidates:
+                    continue
+                row = tuple(random.choice(candidates))
+                row_set = frozenset(row)
+                cov = sum(
+                    1 for sub, pattern in remaining if row_set >= frozenset(sub)
+                    and all(
+                        (ext in row_set) == (ext in pattern) for ext in sub
+                    )
+                )
+                if cov > best_cov:
+                    best_cov, best_row = cov, row
+            rows.append(best_row)
+            row_set = frozenset(best_row)
+            remaining = {
+                (sub, pattern)
+                for sub, pattern in remaining
+                if not (
+                    row_set >= frozenset(sub)
+                    and all(
+                        (ext in row_set) == (ext in pattern) for ext in sub
+                    )
+                )
+            }
+        if best_rows is None or len(rows) < len(best_rows):
+            best_rows = rows
+
+    # Deterministic output order.
+    return sorted(set(best_rows))
+
+
 def get_act_lines(combination: list) -> list:
     lines = []
     for key in combination:
         lines.extend(SUBSET[key].get("act", []))
     return lines
-
-
-def generate_key_combinations(keys: list, current_combination: list = None) -> list:
-    if current_combination is None:
-        current_combination = []
-    if not keys:
-        return [current_combination]
-
-    key = keys[0]
-    combinations = generate_key_combinations(keys[1:], current_combination)
-    new_combination = current_combination + [key]
-    combinations += generate_key_combinations(keys[1:], new_combination)
-
-    return combinations
 
 
 def get_unique_values_from_combination(combination: list, subset: dict) -> list:
