@@ -71,7 +71,10 @@ SUBSET = {
             "-D RVE_E_ZBA=1",
             "-D RVE_E_ZBB=1",
             "-D RVE_E_ZBC=1",
+            "-D RVE_E_ZBKC=1",
             "-D RVE_E_ZBS=1",
+            "-D RVE_E_ZBKB=1",
+            "-D RVE_E_ZBKX=1",
         ],
     },
     "Zaamo": {"define": ["-D RVE_E_ZAAMO=1"]},
@@ -81,8 +84,30 @@ SUBSET = {
     "Zifencei": {"define": ["-D RVE_E_ZIFENCEI=1"]},
     "Zba": {"define": ["-D RVE_E_ZBA=1"]},
     "Zbb": {"define": ["-D RVE_E_ZBB=1"]},
-    "Zbc": {"define": ["-D RVE_E_ZBC=1"]},
+    "Zbc": {
+        "define": ["-D RVE_E_ZBC=1"],
+        "exclude": [
+            "-D RVE_E_ZBKC=1",
+        ],
+    },
+    "Zbkc": {"define": ["-D RVE_E_ZBKC=1"]},
+    "Zbkb": {"define": ["-D RVE_E_ZBKB=1"]},
+    "Zbkx": {"define": ["-D RVE_E_ZBKX=1"]},
     "Zbs": {"define": ["-D RVE_E_ZBS=1"]},
+    "Zcb": {
+        "define": ["-D RVE_E_ZCB=1", "-D RVE_E_C=1"],
+    },
+    "Zcmop": {
+        "define": ["-D RVE_E_ZCMOP=1", "-D RVE_E_C=1"],
+    },
+    "Zicntr": {
+        "define": ["-D RVE_E_ZICNTR=1", "-D RVE_E_ZICSR=1"],
+    },
+    "Zicond": {"define": ["-D RVE_E_ZICOND=1"]},
+    "Zihintntl": {"define": ["-D RVE_E_ZIHINTNTL=1"]},
+    "Zihintpause": {"define": ["-D RVE_E_ZIHINTPAUSE=1"]},
+    "Zimop": {"define": ["-D RVE_E_ZIMOP=1"]},
+    "Misalign": {"define": ["-D RVE_E_MISALIGNED=1"]},
 }
 
 
@@ -99,22 +124,36 @@ def main() -> None:
     args = parser.parse_args()
 
     keys = list(SUBSET)
-    all_legal = [
-        comb for size in range(len(keys) + 1)
-        for comb in itertools.combinations(keys, size)
-        if legal_combination(SUBSET, list(comb))
-    ]
 
     if args.full:
+        all_legal = [
+            comb for size in range(len(keys) + 1)
+            for comb in itertools.combinations(keys, size)
+            if legal_combination(SUBSET, list(comb))
+        ]
         combinations = all_legal
         # Smoke subset: singles plus every maximal legal combination.
         smoke = set(
             comb for comb in all_legal if len(comb) <= 1
         ) | set(maximal_combinations(all_legal))
     else:
-        singles = [comb for comb in all_legal if len(comb) == 1]
-        array = covering_array(all_legal, COVERING_STRENGTH)
-        combinations = singles + array
+        # Enumerating all 2^N combinations does not scale. A covering array
+        # only needs every legal strength-sized subcombination plus candidate
+        # rows, which can be built up incrementally.
+        singles = [
+            minimal_combination(SUBSET, key) for key in keys
+        ]
+        required = [
+            comb for comb in itertools.combinations(keys, COVERING_STRENGTH)
+            if legal_combination(SUBSET, list(comb))
+        ]
+        array = covering_array(required, COVERING_STRENGTH)
+        # A covering row can coincide with a single-extension combination.
+        # The singles are always included, so drop those duplicates to avoid
+        # duplicate env sections in the generated .ini.
+        combinations = singles + [
+            comb for comb in array if comb not in singles
+        ]
         # In default mode the whole set is the smoke subset.
         smoke = set(combinations)
 
@@ -150,64 +189,65 @@ def maximal_combinations(combinations: list) -> list:
     return maximal
 
 
-def covering_array(legal: list, strength: int) -> list:
+def minimal_combination(subset: dict, key: str) -> tuple:
+    """Return the smallest legal combination that contains the key."""
+    combo = [key]
+    # The first define of each extension enables the extension, the following
+    # defines are dependencies of that extension. A dependency is provided by
+    # the extension for which it is the primary (first) define. Single-letter
+    # extensions precede the multi-letter Z extensions in the ISA string.
+    for dependency in subset[key]["define"][1:]:
+        for provider in subset:
+            if (
+                subset[provider]["define"][0] == dependency
+                and provider not in combo
+            ):
+                if len(provider) == 1:
+                    combo.insert(0, provider)
+                else:
+                    combo.append(provider)
+    return tuple(combo)
+
+
+def random_legal_combination(required: list, subset: dict) -> tuple:
+    """Return a random legal combination grown from a required subcombination."""
+    row = list(random.choice(required))
+    for key in subset:
+        if key not in row and random.random() < 0.5:
+            if legal_combination(subset, row + [key]):
+                row.append(key)
+    return tuple(row)
+
+
+def covering_array(required: list, strength: int) -> list:
     """
     Greedy randomized search for a covering array of the given strength over
-    the legal combinations. Deterministic via SEED. Returns a list of
-    combinations (tuples of subset keys) such that every legal
-    strength-sized subcombination with every on/off pattern that occurs in
-    some legal combination is covered by at least one row.
+    the legal combinations. Deterministic via SEED. Takes the list of legal
+    strength-sized subcombinations and returns a list of combinations (tuples
+    of subset keys) such that every required subcombination is contained in
+    at least one row.
     """
-    legal_sets = [frozenset(comb) for comb in legal]
-    legal_by_size = {}
-    for comb in legal:
-        legal_by_size.setdefault(len(comb), []).append(comb)
+    required_sets = [frozenset(comb) for comb in required]
 
-    # Required coverage items: (subcombination, pattern) where the pattern
-    # (which members of the subcombination are on) is realized by at least
-    # one legal combination.
-    required = set()
-    for comb in legal:
-        for sub in itertools.combinations(comb, strength):
-            required.add((sub, frozenset(sub)))
-
-    if not required:
+    if not required_sets:
         return []
 
     random.seed(SEED)
     best_rows = None
     for _ in range(GREEDY_TRIALS):
         rows = []
-        remaining = set(required)
+        remaining = set(required_sets)
         while remaining:
             best_row, best_cov = None, -1
             for _ in range(GREEDY_CANDIDATES):
-                size = random.randint(0, len(SUBSET))
-                candidates = legal_by_size.get(size, [])
-                if not candidates:
-                    continue
-                row = tuple(random.choice(candidates))
+                row = random_legal_combination(required, SUBSET)
                 row_set = frozenset(row)
-                cov = sum(
-                    1 for sub, pattern in remaining if row_set >= frozenset(sub)
-                    and all(
-                        (ext in row_set) == (ext in pattern) for ext in sub
-                    )
-                )
+                cov = sum(1 for sub in remaining if row_set >= sub)
                 if cov > best_cov:
                     best_cov, best_row = cov, row
             rows.append(best_row)
             row_set = frozenset(best_row)
-            remaining = {
-                (sub, pattern)
-                for sub, pattern in remaining
-                if not (
-                    row_set >= frozenset(sub)
-                    and all(
-                        (ext in row_set) == (ext in pattern) for ext in sub
-                    )
-                )
-            }
+            remaining = {sub for sub in remaining if not row_set >= sub}
         if best_rows is None or len(rows) < len(best_rows):
             best_rows = rows
 
