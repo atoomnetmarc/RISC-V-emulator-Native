@@ -13,7 +13,8 @@ SPDX-License-Identifier: Apache-2.0
 // Size in bytes.
 #define RAM_LENGTH 0x1000000
 
-uint8_t memory[RAM_LENGTH];
+// Dynamically allocated in main() with RAM_LENGTH bytes.
+extern uint8_t *memory;
 
 uint8_t pleasestop;
 

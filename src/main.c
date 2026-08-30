@@ -14,7 +14,7 @@ SPDX-License-Identifier: Apache-2.0
 
 #include "memory.h"
 
-uint8_t memory[RAM_LENGTH];
+uint8_t *memory;
 
 RiscvEmulatorState_t RiscvEmulatorState;
 
@@ -45,14 +45,22 @@ int main(int argc, char *argv[]) {
     setvbuf(stdout, NULL, _IONBF, 0);
     pleasestop = 0;
 
+    memory = malloc(RAM_LENGTH);
+    if (memory == NULL) {
+        printf("Failed to allocate %zu bytes of RAM.\n", (size_t)RAM_LENGTH);
+        return 2;
+    }
+    memset(memory, 0, RAM_LENGTH);
+
     // Load the actual binary (objcopy -O binary output) directly into RAM.
     // Its byte 0 corresponds to address 0x80000000 (RAM_ORIGIN).
     FILE *fbin = fopen(binpath, "rb");
     if (fbin == NULL) {
+        free(memory);
         printf("file not found: %s\n", binpath);
         return 2;
     }
-    size_t binsize = fread(memory, sizeof(uint8_t), sizeof(memory), fbin);
+    size_t binsize = fread(memory, sizeof(uint8_t), RAM_LENGTH, fbin);
     if (verbose) {
         printf("Read %zu bytes.\n", binsize);
     }
@@ -62,7 +70,7 @@ int main(int argc, char *argv[]) {
         printf("RiscvEmulatorInit()\n");
     }
 
-    RiscvEmulatorInit(&RiscvEmulatorState, sizeof(memory));
+    RiscvEmulatorInit(&RiscvEmulatorState, RAM_LENGTH);
 
     // RiscvEmulatorInit sets the PC to ROM_ORIGIN (0x20000000). ACT4 places
     // all code and data in RAM at RAM_ORIGIN (0x80000000), so override the PC
@@ -103,6 +111,9 @@ int main(int argc, char *argv[]) {
     }
 
     printf("Simulated %zu CPU instructions.\n", loopcounter);
+    printf("Allocated %zu bytes of RAM (%zu bytes used by the binary).\n",
+           (size_t)RAM_LENGTH, binsize);
+    free(memory);
 
     if (testresult == 123456789) {
         return 0;
