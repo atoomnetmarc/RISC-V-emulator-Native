@@ -59,6 +59,30 @@ target_compile_options(program PRIVATE
   -Wpedantic
 )
 
+# Stricter warnings, applied when the compiler supports them (both GCC and
+# clang do, but older versions may lack individual flags).
+set(RVE_STRICT_WARNINGS
+  -Wshadow
+  -Wcast-qual
+  -Wcast-align
+  -Wstrict-prototypes
+  -Wmissing-prototypes
+  -Wdouble-promotion
+  -Wformat=2
+  -Wundef
+  -Wpointer-arith
+  -Wwrite-strings
+  -Wconversion
+  -Wsign-conversion
+)
+foreach(flag IN LISTS RVE_STRICT_WARNINGS)
+  string(MAKE_C_IDENTIFIER "RVE_HAS${flag}" rve_flag_var)
+  check_c_compiler_flag(${flag} ${rve_flag_var})
+  if(${rve_flag_var})
+    target_compile_options(program PRIVATE ${flag})
+  endif()
+endforeach()
+
 # -fno-reorder-blocks: GCC-only.
 check_c_compiler_flag(-fno-reorder-blocks RVE_HAS_NO_REORDER_BLOCKS)
 if(RVE_HAS_NO_REORDER_BLOCKS)

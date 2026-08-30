@@ -22,6 +22,12 @@ extern uint8_t verbose;
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #pragma GCC diagnostic ignored "-Wunused-variable"
 
+static void printInteger(
+    const char *name,
+    const uint32_t value,
+    const uint8_t length,
+    const uint8_t issigned);
+
 void printInteger(
     const char *name,
     const uint32_t value,
@@ -57,6 +63,10 @@ void printInteger(
  */
 void RiscvEmulatorHook(
     const RiscvEmulatorState_t *state,
+    const RiscvEmulatorHookContext_t *context);
+
+void RiscvEmulatorHook(
+    const RiscvEmulatorState_t *state,
     const RiscvEmulatorHookContext_t *context) {
 
     // Instruction tracing is opt-in via the -v flag. Without it the hook stays
@@ -83,7 +93,7 @@ void RiscvEmulatorHook(
 
     const uint32_t imm = context->imm;
     const uint8_t immissigned = context->immissigned;
-    char *immname = "imm";
+    const char *immname = "imm";
     if (context->immname != NULL) {
         immname = context->immname;
     }
@@ -131,10 +141,10 @@ void RiscvEmulatorHook(
             printf(", neg, rd x%u(%s): 0x%08X, rs2 x%u(%s): 0x%08X\n",
                    rdnum,
                    rdname,
-                   *(uint32_t *)rd,
+                   *(const uint32_t *)rd,
                    rs2num,
                    rs2name,
-                   *(uint32_t *)rs2);
+                   *(const uint32_t *)rs2);
             return;
         }
     }
@@ -146,10 +156,10 @@ void RiscvEmulatorHook(
             printf(", snez, rd x%u(%s): 0x%08X, rs2 x%u(%s): 0x%08X\n",
                    rdnum,
                    rdname,
-                   *(uint32_t *)rd,
+                   *(const uint32_t *)rd,
                    rs2num,
                    rs2name,
-                   *(uint32_t *)rs2);
+                   *(const uint32_t *)rs2);
             return;
         }
     }
@@ -161,10 +171,10 @@ void RiscvEmulatorHook(
             printf(", sltz, rd x%u(%s): 0x%08X, rs1 x%u(%s): 0x%08X\n",
                    rdnum,
                    rdname,
-                   *(uint32_t *)rd,
+                   *(const uint32_t *)rd,
                    rs1num,
                    rs1name,
-                   *(uint32_t *)rs1);
+                   *(const uint32_t *)rs1);
             return;
         }
     }
@@ -176,10 +186,10 @@ void RiscvEmulatorHook(
             printf(", sgtz, rd x%u(%s): 0x%08X, rs2 x%u(%s): 0x%08X\n",
                    rdnum,
                    rdname,
-                   *(uint32_t *)rd,
+                   *(const uint32_t *)rd,
                    rs2num,
                    rs2name,
-                   *(uint32_t *)rs2);
+                   *(const uint32_t *)rs2);
             return;
         }
     }
@@ -222,13 +232,13 @@ void RiscvEmulatorHook(
                    context->instruction,
                    rdnum,
                    rdname,
-                   *(uint32_t *)rd,
+                   *(const uint32_t *)rd,
                    rs1num,
                    rs1name,
-                   *(uint32_t *)rs1,
+                   *(const uint32_t *)rs1,
                    rs2num,
                    rs2name,
-                   *(uint32_t *)rs2);
+                   *(const uint32_t *)rs2);
             return;
         } else if (context->hook == HOOK_END) {
             if (rdnum != 0) {
@@ -236,7 +246,7 @@ void RiscvEmulatorHook(
                        tab,
                        rdnum,
                        rdname,
-                       *(uint32_t *)rd);
+                       *(const uint32_t *)rd);
             }
             return;
         }
@@ -264,10 +274,10 @@ void RiscvEmulatorHook(
             printf(", mv, rd x%u(%s): 0x%08X, rs1 x%u(%s): 0x%08X\n",
                    rdnum,
                    rdname,
-                   *(uint32_t *)rd,
+                   *(const uint32_t *)rd,
                    rs1num,
                    rs1name,
-                   *(uint32_t *)rs1);
+                   *(const uint32_t *)rs1);
             return;
         }
     }
@@ -279,10 +289,10 @@ void RiscvEmulatorHook(
             printf(", not, rd x%u(%s): 0x%08X, rs1 x%u(%s): 0x%08X\n",
                    rdnum,
                    rdname,
-                   *(uint32_t *)rd,
+                   *(const uint32_t *)rd,
                    rs1num,
                    rs1name,
-                   *(uint32_t *)rs1);
+                   *(const uint32_t *)rs1);
             return;
         }
     }
@@ -294,10 +304,10 @@ void RiscvEmulatorHook(
             printf(", seqz, rd x%u(%s): 0x%08X, rs1 x%u(%s): 0x%08X\n",
                    rdnum,
                    rdname,
-                   *(uint32_t *)rd,
+                   *(const uint32_t *)rd,
                    rs1num,
                    rs1name,
-                   *(uint32_t *)rs1);
+                   *(const uint32_t *)rs1);
             return;
         }
     }
@@ -321,7 +331,7 @@ void RiscvEmulatorHook(
             printf(", ret, rs1 x%u(%s): 0x%08X\n",
                    rs1num,
                    rs1name,
-                   *(uint32_t *)rs1);
+                   *(const uint32_t *)rs1);
             return;
         }
     }
@@ -333,7 +343,7 @@ void RiscvEmulatorHook(
             printf(", jr, rs1 x%u(%s): 0x%08X",
                    rs1num,
                    rs1name,
-                   *(uint32_t *)rs1);
+                   *(const uint32_t *)rs1);
             printInteger(immname, imm, immlength, immissigned);
             printf("\n");
             return;
@@ -352,10 +362,10 @@ void RiscvEmulatorHook(
                    context->instruction,
                    rdnum,
                    rdname,
-                   *(uint32_t *)rd,
+                   *(const uint32_t *)rd,
                    rs1num,
                    rs1name,
-                   *(uint32_t *)rs1);
+                   *(const uint32_t *)rs1);
             printInteger(immname, imm, immlength, immissigned);
             printf("\n");
             return;
@@ -365,7 +375,7 @@ void RiscvEmulatorHook(
                        tab,
                        rdnum,
                        rdname,
-                       *(uint32_t *)rd);
+                       *(const uint32_t *)rd);
                 printf("%spc = 0x%08X\n",
                        tab,
                        state->programcounternext);
@@ -393,10 +403,10 @@ void RiscvEmulatorHook(
                    context->instruction,
                    rdnum,
                    rdname,
-                   *(uint32_t *)rd,
+                   *(const uint32_t *)rd,
                    rs1num,
                    rs1name,
-                   *(uint32_t *)rs1);
+                   *(const uint32_t *)rs1);
             printInteger(immname, imm, immlength, immissigned);
             printf("\n");
             return;
@@ -406,7 +416,7 @@ void RiscvEmulatorHook(
                        tab,
                        rdnum,
                        rdname,
-                       *(uint32_t *)rd);
+                       *(const uint32_t *)rd);
             }
             return;
         }
@@ -428,10 +438,10 @@ void RiscvEmulatorHook(
                    context->instruction,
                    rdnum,
                    rdname,
-                   *(uint32_t *)rd,
+                   *(const uint32_t *)rd,
                    rs1num,
                    rs1name,
-                   *(uint32_t *)rs1);
+                   *(const uint32_t *)rs1);
             printInteger(immname, imm, immlength, immissigned);
             printf(", memorylocation: 0x%08X\n",
                    memorylocation);
@@ -442,51 +452,51 @@ void RiscvEmulatorHook(
                        tab,
                        rdnum,
                        rdname,
-                       *(int8_t *)rd);
+                       *(const int8_t *)rd);
                 printf("%sx%u(%s) = 0x%08X\n",
                        tab,
                        rdnum,
                        rdname,
-                       *(uint32_t *)rd);
+                       *(const uint32_t *)rd);
             } else if (strcmp(context->instruction, "lbu") == 0) {
                 printf("%sx%u(%s) = %u\n",
                        tab,
                        rdnum,
                        rdname,
-                       *(uint8_t *)rd);
+                       *(const uint8_t *)rd);
                 printf("%sx%u(%s) = 0x%08X\n",
                        tab,
                        rdnum,
                        rdname,
-                       *(uint32_t *)rd);
+                       *(const uint32_t *)rd);
             } else if (strcmp(context->instruction, "lh") == 0) {
                 printf("%sx%u(%s) = %i\n",
                        tab,
                        rdnum,
                        rdname,
-                       *(int16_t *)rd);
+                       *(const int16_t *)rd);
                 printf("%sx%u(%s) = 0x%08X\n",
                        tab,
                        rdnum,
                        rdname,
-                       *(uint32_t *)rd);
+                       *(const uint32_t *)rd);
             } else if (strcmp(context->instruction, "lhu") == 0) {
                 printf("%sx%u(%s) = %u\n",
                        tab,
                        rdnum,
                        rdname,
-                       *(uint16_t *)rd);
+                       *(const uint16_t *)rd);
                 printf("%sx%u(%s) = 0x%08X\n",
                        tab,
                        rdnum,
                        rdname,
-                       *(uint32_t *)rd);
+                       *(const uint32_t *)rd);
             } else {
                 printf("%sx%u(%s) = 0x%08X\n",
                        tab,
                        rdnum,
                        rdname,
-                       *(uint32_t *)rd);
+                       *(const uint32_t *)rd);
             }
             return;
         }
@@ -533,25 +543,25 @@ void RiscvEmulatorHook(
                    context->instruction,
                    rdnum,
                    rdname,
-                   *(uint32_t *)rd,
+                   *(const uint32_t *)rd,
                    rs1num,
                    rs1name,
-                   *(uint32_t *)rs1,
+                   *(const uint32_t *)rs1,
                    csrnum,
                    csrname,
-                   *(uint32_t *)csr);
+                   *(const uint32_t *)csr);
             return;
         } else if (context->hook == HOOK_END) {
             printf("%s%s = 0x%08X\n",
                    tab,
                    csrname,
-                   *(uint32_t *)csr);
+                   *(const uint32_t *)csr);
             if (rdnum != 0) {
                 printf("%sx%u(%s) = 0x%08X\n",
                        tab,
                        rdnum,
                        rdname,
-                       *(uint32_t *)rd);
+                       *(const uint32_t *)rd);
             }
             return;
         }
@@ -565,24 +575,24 @@ void RiscvEmulatorHook(
                    context->instruction,
                    rdnum,
                    rdname,
-                   *(uint32_t *)rd);
+                   *(const uint32_t *)rd);
             printInteger(immname, imm, immlength, immissigned);
             printf(", csr 0x%04X(%s): 0x%08X\n",
                    csrnum,
                    csrname,
-                   *(uint32_t *)csr);
+                   *(const uint32_t *)csr);
             return;
         } else if (context->hook == HOOK_END) {
             printf("%s%s = 0x%08X\n",
                    tab,
                    csrname,
-                   *(uint32_t *)csr);
+                   *(const uint32_t *)csr);
             if (rdnum != 0) {
                 printf("%sx%u(%s) = 0x%08X\n",
                        tab,
                        rdnum,
                        rdname,
-                       *(uint32_t *)rd);
+                       *(const uint32_t *)rd);
             }
             return;
         }
@@ -604,10 +614,10 @@ void RiscvEmulatorHook(
                    context->instruction,
                    rs1num,
                    rs1name,
-                   *(uint32_t *)rs1,
+                   *(const uint32_t *)rs1,
                    rs2num,
                    rs2name,
-                   *(uint32_t *)rs2);
+                   *(const uint32_t *)rs2);
             printInteger(immname, imm, immlength, immissigned);
             printf(", memorylocation: 0x%08X\n",
                    memorylocation);
@@ -617,17 +627,17 @@ void RiscvEmulatorHook(
                 printf("%s0x%08X = 0x%02X\n",
                        tab,
                        memorylocation,
-                       *(uint8_t *)rs2);
+                       *(const uint8_t *)rs2);
             } else if (length == 2) {
                 printf("%s0x%08X = 0x%04X\n",
                        tab,
                        memorylocation,
-                       *(uint16_t *)rs2);
+                       *(const uint16_t *)rs2);
             } else {
                 printf("%s0x%08X = 0x%08X\n",
                        tab,
                        memorylocation,
-                       *(uint32_t *)rs2);
+                       *(const uint32_t *)rs2);
             }
             return;
         }
@@ -644,7 +654,7 @@ void RiscvEmulatorHook(
             printf(", beqz, rs1 x%u(%s): 0x%08X",
                    rs1num,
                    rs1name,
-                   *(uint32_t *)rs1);
+                   *(const uint32_t *)rs1);
             printInteger(immname, imm, immlength, immissigned);
             printf("\n");
             return;
@@ -658,7 +668,7 @@ void RiscvEmulatorHook(
             printf(", bnez, rs1 x%u(%s): 0x%08X",
                    rs1num,
                    rs1name,
-                   *(uint32_t *)rs1);
+                   *(const uint32_t *)rs1);
             printInteger(immname, imm, immlength, immissigned);
             printf("\n");
             return;
@@ -672,7 +682,7 @@ void RiscvEmulatorHook(
             printf(", bgez, rs1 x%u(%s): 0x%08X",
                    rs1num,
                    rs1name,
-                   *(uint32_t *)rs1);
+                   *(const uint32_t *)rs1);
             printInteger(immname, imm, immlength, immissigned);
             printf("\n");
             return;
@@ -686,7 +696,7 @@ void RiscvEmulatorHook(
             printf(", bltz, rs1 x%u(%s): 0x%08X",
                    rs1num,
                    rs1name,
-                   *(uint32_t *)rs1);
+                   *(const uint32_t *)rs1);
             printInteger(immname, imm, immlength, immissigned);
             printf("\n");
             return;
@@ -700,7 +710,7 @@ void RiscvEmulatorHook(
             printf(", blez, rs2 x%u(%s): 0x%08X",
                    rs2num,
                    rs2name,
-                   *(uint32_t *)rs2);
+                   *(const uint32_t *)rs2);
             printInteger(immname, imm, immlength, immissigned);
             printf("\n");
             return;
@@ -714,7 +724,7 @@ void RiscvEmulatorHook(
             printf(", bgtz, rs2 x%u(%s): 0x%08X",
                    rs2num,
                    rs2name,
-                   *(uint32_t *)rs2);
+                   *(const uint32_t *)rs2);
             printInteger(immname, imm, immlength, immissigned);
             printf("\n");
             return;
@@ -738,10 +748,10 @@ void RiscvEmulatorHook(
                    context->instruction,
                    rs1num,
                    rs1name,
-                   *(uint32_t *)rs1,
+                   *(const uint32_t *)rs1,
                    rs2num,
                    rs2name,
-                   *(uint32_t *)rs2);
+                   *(const uint32_t *)rs2);
             printInteger(immname, imm, immlength, immissigned);
             printf("\n");
             return;
@@ -766,7 +776,7 @@ void RiscvEmulatorHook(
                    context->instruction,
                    rdnum,
                    rdname,
-                   *(uint32_t *)rd);
+                   *(const uint32_t *)rd);
             printInteger(immname, imm, immlength, immissigned);
             printf("\n");
             return;
@@ -776,7 +786,7 @@ void RiscvEmulatorHook(
                        tab,
                        rdnum,
                        rdname,
-                       *(uint32_t *)rd);
+                       *(const uint32_t *)rd);
             }
             return;
         }
@@ -810,7 +820,7 @@ void RiscvEmulatorHook(
                    context->instruction,
                    rdnum,
                    rdname,
-                   *(uint32_t *)rd);
+                   *(const uint32_t *)rd);
             printInteger(immname, imm, immlength, immissigned);
             printf("\n");
             return;
@@ -820,7 +830,7 @@ void RiscvEmulatorHook(
                        tab,
                        rdnum,
                        rdname,
-                       *(uint32_t *)rd);
+                       *(const uint32_t *)rd);
                 printf("%spc = 0x%08X\n",
                        tab,
                        state->programcounternext);
@@ -844,10 +854,10 @@ void RiscvEmulatorHook(
                    context->instruction,
                    rdnum,
                    rdname,
-                   *(uint32_t *)rd,
+                   *(const uint32_t *)rd,
                    rs2num,
                    rs2name,
-                   *(uint32_t *)rs2);
+                   *(const uint32_t *)rs2);
             printf("\n");
             return;
         } else if (context->hook == HOOK_END) {
@@ -855,7 +865,7 @@ void RiscvEmulatorHook(
                    tab,
                    rdnum,
                    rdname,
-                   *(uint32_t *)rd);
+                   *(const uint32_t *)rd);
             return;
         }
     }
@@ -866,10 +876,10 @@ void RiscvEmulatorHook(
                    context->instruction,
                    rdnum,
                    rdname,
-                   *(uint32_t *)rd,
+                   *(const uint32_t *)rd,
                    rs2num,
                    rs2name,
-                   *(uint32_t *)rs2);
+                   *(const uint32_t *)rs2);
             printf("\n");
             return;
         } else if (context->hook == HOOK_END) {
@@ -877,7 +887,7 @@ void RiscvEmulatorHook(
                    tab,
                    rdnum,
                    rdname,
-                   *(uint32_t *)rd);
+                   *(const uint32_t *)rd);
             return;
         }
     }
@@ -888,7 +898,7 @@ void RiscvEmulatorHook(
                    context->instruction,
                    rs1num,
                    rs1name,
-                   *(uint32_t *)rs1);
+                   *(const uint32_t *)rs1);
             return;
         } else if (context->hook == HOOK_END) {
             printf("%spc = 0x%08X\n",
@@ -902,15 +912,15 @@ void RiscvEmulatorHook(
         if (context->hook == HOOK_BEGIN) {
             printf(", %s, x1(ra): 0x%08X, rs1 x%u(%s): 0x%08X\n",
                    context->instruction,
-                   *(uint32_t *)ra,
+                   *(const uint32_t *)ra,
                    rs1num,
                    rs1name,
-                   *(uint32_t *)rs1);
+                   *(const uint32_t *)rs1);
             return;
         } else if (context->hook == HOOK_END) {
             printf("%sx1(ra) = 0x%08X\n",
                    tab,
-                   *(uint32_t *)ra);
+                   *(const uint32_t *)ra);
             printf("%spc = 0x%08X\n",
                    tab,
                    state->programcounternext);
@@ -932,7 +942,7 @@ void RiscvEmulatorHook(
                    context->instruction,
                    rdnum,
                    rdname,
-                   *(uint32_t *)rd);
+                   *(const uint32_t *)rd);
             printInteger(immname, imm, immlength, immissigned);
             printf("\n");
             return;
@@ -941,7 +951,7 @@ void RiscvEmulatorHook(
                    tab,
                    rdnum,
                    rdname,
-                   *(uint32_t *)rd);
+                   *(const uint32_t *)rd);
             return;
         }
     }
@@ -956,8 +966,8 @@ void RiscvEmulatorHook(
                    context->instruction,
                    rs2num,
                    rs2name,
-                   *(uint32_t *)rs2,
-                   *(uint32_t *)sp);
+                   *(const uint32_t *)rs2,
+                   *(const uint32_t *)sp);
             printInteger(immname, imm, immlength, immissigned);
             printf(", memorylocation: 0x%08X\n",
                    memorylocation);
@@ -966,7 +976,7 @@ void RiscvEmulatorHook(
             printf("%s0x%08X = 0x%08X\n",
                    tab,
                    memorylocation,
-                   *(uint32_t *)rs2);
+                   *(const uint32_t *)rs2);
             return;
         }
     }
@@ -981,8 +991,8 @@ void RiscvEmulatorHook(
                    context->instruction,
                    rdnum,
                    rdname,
-                   *(uint32_t *)rd,
-                   *(uint32_t *)sp);
+                   *(const uint32_t *)rd,
+                   *(const uint32_t *)sp);
             printInteger(immname, imm, immlength, immissigned);
             printf("\n");
             return;
@@ -992,7 +1002,7 @@ void RiscvEmulatorHook(
                        tab,
                        rdnum,
                        rdname,
-                       *(uint32_t *)rd);
+                       *(const uint32_t *)rd);
             }
             return;
         }
@@ -1008,8 +1018,8 @@ void RiscvEmulatorHook(
                    context->instruction,
                    rdnum,
                    rdname,
-                   *(uint32_t *)rd,
-                   *(uint32_t *)sp);
+                   *(const uint32_t *)rd,
+                   *(const uint32_t *)sp);
             printInteger(immname, imm, immlength, immissigned);
             printf(", memorylocation: 0x%08X\n",
                    memorylocation);
@@ -1019,7 +1029,7 @@ void RiscvEmulatorHook(
                    tab,
                    rdnum,
                    rdname,
-                   *(uint32_t *)rd);
+                   *(const uint32_t *)rd);
             return;
         }
     }
@@ -1030,10 +1040,10 @@ void RiscvEmulatorHook(
                    context->instruction,
                    rdnum,
                    rdname,
-                   *(uint32_t *)rd,
+                   *(const uint32_t *)rd,
                    rs1num,
                    rs1name,
-                   *(uint32_t *)rs1);
+                   *(const uint32_t *)rs1);
             printInteger(immname, imm, immlength, immissigned);
             printf(", memorylocation: 0x%08X\n",
                    memorylocation);
@@ -1043,7 +1053,7 @@ void RiscvEmulatorHook(
                    tab,
                    rdnum,
                    rdname,
-                   *(uint32_t *)rd);
+                   *(const uint32_t *)rd);
             return;
         }
     }
@@ -1060,7 +1070,7 @@ void RiscvEmulatorHook(
                    context->instruction,
                    rdnum,
                    rdname,
-                   *(uint32_t *)rd);
+                   *(const uint32_t *)rd);
             printInteger(immname, imm, immlength, immissigned);
             printf("\n");
             return;
@@ -1069,7 +1079,7 @@ void RiscvEmulatorHook(
                    tab,
                    rdnum,
                    rdname,
-                   *(uint32_t *)rd);
+                   *(const uint32_t *)rd);
             return;
         }
     }
@@ -1081,7 +1091,7 @@ void RiscvEmulatorHook(
                    context->instruction,
                    rs1num,
                    rs1name,
-                   *(uint32_t *)rs1);
+                   *(const uint32_t *)rs1);
             printInteger(immname, imm, immlength, immissigned);
             printf("\n");
             return;
@@ -1101,14 +1111,14 @@ void RiscvEmulatorHook(
         if (context->hook == HOOK_BEGIN) {
             printf(", %s, x1(ra): 0x%08X",
                    context->instruction,
-                   *(uint32_t *)ra);
+                   *(const uint32_t *)ra);
             printInteger(immname, imm, immlength, immissigned);
             printf("\n");
             return;
         } else if (context->hook == HOOK_END) {
             printf("%sx1(ra) = 0x%08X\n",
                    tab,
-                   *(uint32_t *)ra);
+                   *(const uint32_t *)ra);
             printf("%spc = 0x%08X\n",
                    tab,
                    state->programcounternext);
