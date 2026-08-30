@@ -5,6 +5,8 @@
 # Visual Studio Code
 .vscode
 
-binaries/
+build
+binaries
+isa-combinations.cmake
 
 __pycache__
