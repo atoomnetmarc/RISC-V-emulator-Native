@@ -5,10 +5,15 @@ SPDX-License-Identifier: Apache-2.0
 
 */
 
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+
+// The consumer provides its own RiscvEmulatorDisasmPrintf below; skip the
+// library's weak definition (it cannot be overridden in the same TU).
+#define RVE_DISASM_PRINTF_OVERRIDE 1
 
 #include <RiscvEmulator.h>
 
@@ -23,6 +28,22 @@ size_t loopcounter = 0;
 uint32_t testresult = 0;
 
 uint8_t verbose = 0;
+
+// Consumer override of the library's weak disassembly output function. The
+// library renders each instruction via the shape functions; this override
+// sends the fragments to stdout. The verbose gate lives here (a consumer
+// concern): when tracing is off every call becomes a no-op.
+#if (RVE_E_DISASM == 1)
+void RiscvEmulatorDisasmPrintf(const char *fmt, ...) {
+    if (verbose == 0) {
+        return;
+    }
+    va_list ap;
+    va_start(ap, fmt);
+    vprintf(fmt, ap);
+    va_end(ap);
+}
+#endif
 
 int main(int argc, char *argv[]) {
     // Parse -v to enable verbose instruction tracing. The binary path is the
@@ -86,7 +107,7 @@ int main(int argc, char *argv[]) {
         RiscvEmulatorLoop(&RiscvEmulatorState);
 
         // If this prints then consider adding a hook in RiscvEmulatorHook.h and implementing it in hook.c.
-        if (RiscvEmulatorState.hookexists == 0) {
+        if (RiscvEmulatorState.instructionhandled == 0) {
             printf("pc: 0x%08X, instruction: 0x%08X, ???\n",
                    RiscvEmulatorState.programcounter,
                    RiscvEmulatorState.instruction.value);
