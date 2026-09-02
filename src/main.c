@@ -5,10 +5,12 @@ SPDX-License-Identifier: Apache-2.0
 
 */
 
+#include <fcntl.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <termios.h>
 #include <unistd.h>
 
 // The consumer provides its own RiscvEmulatorDisasmPrintf below; skip the
@@ -102,9 +104,30 @@ int main(int argc, char *argv[]) {
     // Fixed safety net against a test that never halts.
     size_t maxloopcounter = 100000000;
 
+    // Put stdin in raw, non-blocking mode so typed characters reach the
+    // emulated UART immediately.
+    struct termios orig_termios;
+    tcgetattr(STDIN_FILENO, &orig_termios);
+    struct termios term = orig_termios;
+    term.c_lflag &= ~(tcflag_t)(ICANON | ECHO);
+    tcsetattr(STDIN_FILENO, TCSANOW, &term);
+    int stdin_flags = fcntl(STDIN_FILENO, F_GETFL, 0);
+    fcntl(STDIN_FILENO, F_SETFL, stdin_flags | O_NONBLOCK);
+
+    // Polling stdin on every instruction slows the simulation drastically,
+    // so only do it once every STDIN_POLL_INTERVAL instructions.
+    #define STDIN_POLL_INTERVAL 4096
+
     for (;;) {
         loopcounter++;
         RiscvEmulatorLoop(&RiscvEmulatorState);
+
+        if (loopcounter % STDIN_POLL_INTERVAL == 0) {
+            uint8_t ch;
+            while (read(STDIN_FILENO, &ch, 1) == 1) {
+                uart_rx_push(ch);
+            }
+        }
 
         // If this prints then consider adding a hook in RiscvEmulatorHook.h and implementing it in hook.c.
         if (RiscvEmulatorState.instructionhandled == 0) {
@@ -135,6 +158,8 @@ int main(int argc, char *argv[]) {
     printf("Allocated %zu bytes of RAM (%zu bytes used by the binary).\n",
            (size_t)RAM_LENGTH, binsize);
     free(memory);
+
+    tcsetattr(STDIN_FILENO, TCSANOW, &orig_termios);
 
     if (testresult == 123456789) {
         return 0;
