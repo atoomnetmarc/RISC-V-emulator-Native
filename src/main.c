@@ -27,6 +27,9 @@ RiscvEmulatorState_t RiscvEmulatorState;
 
 size_t loopcounter = 0;
 
+// Instruction limit set by -m <N>; 0 (the default) means unlimited.
+size_t maxloopcounter = 0;
+
 uint32_t testresult = 0;
 
 uint8_t verbose = 0;
@@ -48,19 +51,23 @@ void RiscvEmulatorDisasmPrintf(const char *fmt, ...) {
 #endif
 
 int main(int argc, char *argv[]) {
-    // Parse -v to enable verbose instruction tracing. The binary path is the
-    // last argument; run_tests.py passes it via elf2bin.sh.
+    // Parse -v to enable verbose instruction tracing and -m <N> to limit the
+    // number of simulated instructions (0 = unlimited, the default). The
+    // binary path is the last argument; run_test.sh passes it via elf2bin.sh.
     const char *binpath = NULL;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-v") == 0) {
             verbose = 1;
+        } else if (strcmp(argv[i], "-m") == 0 && i + 1 < argc) {
+            i++;
+            maxloopcounter = strtoul(argv[i], NULL, 0);
         } else {
             binpath = argv[i];
         }
     }
 
     if (binpath == NULL) {
-        printf("Usage: %s [-v] <binary>\n", argv[0]);
+        printf("Usage: %s [-v] [-m <instructions>] <binary>\n", argv[0]);
         return 2;
     }
 
@@ -101,8 +108,8 @@ int main(int argc, char *argv[]) {
     RiscvEmulatorState.programcounter = RAM_ORIGIN;
     RiscvEmulatorState.programcounternext = RAM_ORIGIN;
 
-    // Fixed safety net against a test that never halts.
-    size_t maxloopcounter = 100000000;
+    // maxloopcounter is 0 (the default) unless -m <N> is given, meaning the
+    // emulation runs until the test signals a halt.
 
     // Put stdin in raw, non-blocking mode so typed characters reach the
     // emulated UART immediately.
@@ -144,7 +151,7 @@ int main(int argc, char *argv[]) {
             pleasestop = 1;
         }
 
-        if (loopcounter >= maxloopcounter) {
+        if (maxloopcounter > 0 && loopcounter >= maxloopcounter) {
             printf("Loopcounter limit reached, stopping emulation.\n");
             break;
         }
@@ -164,6 +171,5 @@ int main(int argc, char *argv[]) {
     if (testresult == 123456789) {
         return 0;
     }
-    printf("Test failed. testresult=0x%08X\n", testresult);
     return 1;
 }
