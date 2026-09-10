@@ -20,7 +20,6 @@ set(RVE_EMULATOR_DIR "${RVE_ROOT}/../RISC-V-emulator"
 
 add_executable(program
   "${RVE_ROOT}/src/main.c"
-  "${RVE_ROOT}/src/hook.c"
 )
 
 target_include_directories(program PRIVATE
