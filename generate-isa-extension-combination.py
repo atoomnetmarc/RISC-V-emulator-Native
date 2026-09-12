@@ -275,7 +275,7 @@ def collect_env(bi_key: str, bi_value: list, combination: tuple, smoke: bool) ->
 
 def print_env(env: dict):
     print(f"[env:{env['isa']}]")
-    print(f"# act-config: rve-{env['isa'].lower()}")
+    print(f"# isa: {env['isa'].lower()}")
     if env["smoke"]:
         print("# smoke")
     for act_line in env["act"]:
