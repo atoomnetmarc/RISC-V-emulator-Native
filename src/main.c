@@ -121,9 +121,9 @@ int main(int argc, char *argv[]) {
     int stdin_flags = fcntl(STDIN_FILENO, F_GETFL, 0);
     fcntl(STDIN_FILENO, F_SETFL, stdin_flags | O_NONBLOCK);
 
-    // Polling stdin on every instruction slows the simulation drastically,
-    // so only do it once every STDIN_POLL_INTERVAL instructions.
-    #define STDIN_POLL_INTERVAL 4096
+// Polling stdin on every instruction slows the simulation drastically,
+// so only do it once every STDIN_POLL_INTERVAL instructions.
+#define STDIN_POLL_INTERVAL 4096
 
     for (;;) {
         loopcounter++;
