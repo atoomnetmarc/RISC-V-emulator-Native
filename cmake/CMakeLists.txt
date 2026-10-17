@@ -82,6 +82,24 @@ foreach(flag IN LISTS RVE_STRICT_WARNINGS)
   endif()
 endforeach()
 
+# GCC-only warnings. These are NOT put through check_c_compiler_flag(): gcc
+# silently accepts unknown -W flags with a mere warning, which would make that
+# check a false positive. Gating on the compiler ID instead.
+if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+  set(RVE_GCC_WARNINGS
+    -Wlogical-op
+    -Wduplicated-cond
+    -Wduplicated-branches
+    -Wjump-misses-init
+    -Wnull-dereference
+    -Wrestrict
+    -Walloc-zero
+    -Wtrampolines
+    -Wcast-function-type
+  )
+  target_compile_options(program PRIVATE ${RVE_GCC_WARNINGS})
+endif()
+
 # Clang-only warnings (icx is clang-based, so IntelLLVM gets them too). These
 # are NOT put through check_c_compiler_flag(): gcc silently accepts unknown
 # -W flags with a mere warning, which would make that check a false positive.
@@ -96,6 +114,8 @@ if(CMAKE_C_COMPILER_ID MATCHES "Clang|IntelLLVM")
     -Wassign-enum
     -Wcovered-switch-default
     -Wextra-semi-stmt
+    -Wcomma
+    -Wcast-function-type
   )
   target_compile_options(program PRIVATE ${RVE_CLANG_WARNINGS})
 endif()
