@@ -25,7 +25,7 @@ failure:
 
 ```
 cmake/run-matrix.py gcc-13            # whole matrix with one compiler
-cmake/run-matrix.py --all             # every compiler in COMPILERS (gcc, clang, tcc)
+cmake/run-matrix.py --all             # every compiler in COMPILERS (gcc, clang, tcc, icx)
 cmake/run-matrix.py gcc --only RV32IM RV32IB
 cmake/run-matrix.py gcc --jobs 8
 ```
@@ -43,3 +43,7 @@ python3 generate-isa-extension-combination.py --cmake cmake/isa-combinations.cma
 GCC-only flags (`-fno-reorder-blocks`, `-Wno-packed-bitfield-compat`) are
 filtered per compiler via `check_c_compiler_flag()`; no per-compiler config
 needed.
+
+Intel oneAPI `icx` is supported. When `icx` is not on the PATH,
+[run-matrix.py](run-matrix.py) sources `/opt/intel/oneapi/setvars.sh`
+automatically, so no manual environment setup is needed.

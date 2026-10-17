@@ -19,6 +19,7 @@
 
 import argparse
 import concurrent.futures
+import json
 import os
 import re
 import shutil
@@ -32,10 +33,35 @@ GENERATOR = os.path.join(REPO, "generate-isa-extension-combination.py")
 COMBINATIONS_FILE = os.path.join(CMAKE_DIR, "isa-combinations.cmake")
 
 # Compilers tested by --all.
-COMPILERS = ["gcc", "clang", "tcc"]
+COMPILERS = ["gcc", "clang", "tcc", "icx"]
 
 # Compilers that ccache does not support
 NO_CCACHE = {"tcc"}
+
+# Environment setup script sourced automatically when icx is requested but
+# not yet on PATH.
+ONEAPI_SETVARS = "/opt/intel/oneapi/setvars.sh"
+
+
+def ensure_oneapi_env(compilers: list) -> None:
+    """Source the Intel oneAPI environment when icx is used but not on PATH."""
+    if not any(os.path.basename(c) == "icx" for c in compilers):
+        return
+    if shutil.which("icx"):
+        return
+    if not os.path.exists(ONEAPI_SETVARS):
+        sys.exit(f"error: icx not found and {ONEAPI_SETVARS} does not exist")
+    proc = subprocess.run(
+        ["bash", "-c",
+         f'source "{ONEAPI_SETVARS}" >/dev/null 2>&1 && '
+         'python3 -c "import os, json; print(json.dumps(dict(os.environ)))"'],
+        capture_output=True, text=True,
+    )
+    if proc.returncode != 0:
+        sys.exit(f"error: sourcing {ONEAPI_SETVARS} failed:\n{proc.stderr}")
+    os.environ.update(json.loads(proc.stdout))
+    if not shutil.which("icx"):
+        sys.exit(f"error: icx still not found after sourcing {ONEAPI_SETVARS}")
 
 
 def ensure_combinations_file() -> list:
@@ -117,6 +143,7 @@ def main() -> int:
     compilers = COMPILERS if args.all else [args.compiler]
     if not compilers or compilers == [None]:
         parser.error("give a compiler or use --all")
+    ensure_oneapi_env(compilers)
 
     combinations = ensure_combinations_file()
     if args.only:

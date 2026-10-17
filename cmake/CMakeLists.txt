@@ -82,6 +82,24 @@ foreach(flag IN LISTS RVE_STRICT_WARNINGS)
   endif()
 endforeach()
 
+# Clang-only warnings (icx is clang-based, so IntelLLVM gets them too). These
+# are NOT put through check_c_compiler_flag(): gcc silently accepts unknown
+# -W flags with a mere warning, which would make that check a false positive.
+if(CMAKE_C_COMPILER_ID MATCHES "Clang|IntelLLVM")
+  set(RVE_CLANG_WARNINGS
+    -Wconditional-uninitialized
+    -Wfloat-equal
+    -Wvla
+    -Wshadow-all
+    -Wbad-function-cast
+    -Wenum-conversion
+    -Wassign-enum
+    -Wcovered-switch-default
+    -Wextra-semi-stmt
+  )
+  target_compile_options(program PRIVATE ${RVE_CLANG_WARNINGS})
+endif()
+
 # -fno-reorder-blocks: GCC-only.
 check_c_compiler_flag(-fno-reorder-blocks RVE_HAS_NO_REORDER_BLOCKS)
 if(RVE_HAS_NO_REORDER_BLOCKS)
