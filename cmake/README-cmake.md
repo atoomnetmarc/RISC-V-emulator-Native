@@ -30,6 +30,9 @@ cmake/run-matrix.py gcc --only RV32IM RV32IB
 cmake/run-matrix.py gcc --jobs 8
 ```
 
+Run this (and `pio run`) after every source change; the matrix catches
+compiler-specific warnings gcc alone won't.
+
 ## Regenerate combinations
 
 ```
