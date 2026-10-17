@@ -25,4 +25,4 @@ Compiler is the system default (`cc`); for other compilers use the
 [CMake driver](README-cmake.md).
 
 After every source change, run the full compiler matrix:
-`python3 cmake/run-matrix.py --all` (see [README-cmake.md](README-cmake.md)).
+`python3 cmake/run-matrix.py --all`

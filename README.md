@@ -15,7 +15,7 @@ Both produce binaries for the RISC-V-emulator-ACT test wrapper in
 After any source change (also in the emulator repo), run both:
 
 - `pio run` — PlatformIO build
-- `python3 cmake/run-matrix.py --all` — full compiler matrix (gcc + clang)
+- `python3 cmake/run-matrix.py --all` — full compiler matrix
 
 The matrix catches compiler-specific warnings that a single-compiler build
 will not (e.g. clang's `-Wsign-conversion`).

@@ -25,7 +25,7 @@ failure:
 
 ```
 cmake/run-matrix.py gcc-13            # whole matrix with one compiler
-cmake/run-matrix.py --all             # every compiler in COMPILERS (gcc, clang)
+cmake/run-matrix.py --all             # every compiler in COMPILERS (gcc, clang, tcc)
 cmake/run-matrix.py gcc --only RV32IM RV32IB
 cmake/run-matrix.py gcc --jobs 8
 ```

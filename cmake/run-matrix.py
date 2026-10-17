@@ -32,7 +32,10 @@ GENERATOR = os.path.join(REPO, "generate-isa-extension-combination.py")
 COMBINATIONS_FILE = os.path.join(CMAKE_DIR, "isa-combinations.cmake")
 
 # Compilers tested by --all.
-COMPILERS = ["gcc", "clang"]
+COMPILERS = ["gcc", "clang", "tcc"]
+
+# Compilers that ccache does not support
+NO_CCACHE = {"tcc"}
 
 
 def ensure_combinations_file() -> list:
@@ -67,7 +70,8 @@ def parse_combination(entry: str) -> tuple:
 def build_one(compiler: str, name: str, defines: list, jobs: int) -> tuple:
     """Configure and build one combination. Returns (name, ok, log)."""
     build_dir = os.path.join(REPO, "build", compiler, name)
-    ccache = shutil.which("ccache")
+    ccache = (shutil.which("ccache")
+              if os.path.basename(compiler) not in NO_CCACHE else None)
     configure = [
         "cmake", "-B", build_dir, "-S", CMAKE_DIR,
         f"-DCMAKE_C_COMPILER={compiler}",
