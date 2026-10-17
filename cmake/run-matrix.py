@@ -126,14 +126,20 @@ def ensure_docker_image(info: dict) -> bool:
     return False
 
 
-def ensure_oneapi_env(compilers: list) -> None:
-    """Source the Intel oneAPI environment when icx is used but not on PATH."""
+def ensure_oneapi_env(compilers: list) -> bool:
+    """Source the Intel oneAPI environment when icx is used but not on PATH.
+
+    Returns True when icx is usable (already on PATH or made available by
+    sourcing the oneAPI setvars script); False otherwise, so the caller can
+    skip icx like any other missing compiler.
+    """
     if not any(os.path.basename(c) == "icx" for c in compilers):
-        return
+        return True
     if shutil.which("icx"):
-        return
+        return True
     if not os.path.exists(ONEAPI_SETVARS):
-        sys.exit(f"error: icx not found and {ONEAPI_SETVARS} does not exist")
+        print(f"Skipping icx: not found and {ONEAPI_SETVARS} does not exist")
+        return False
     proc = subprocess.run(
         ["bash", "-c",
          f'source "{ONEAPI_SETVARS}" >/dev/null 2>&1 && '
@@ -141,10 +147,10 @@ def ensure_oneapi_env(compilers: list) -> None:
         capture_output=True, text=True,
     )
     if proc.returncode != 0:
-        sys.exit(f"error: sourcing {ONEAPI_SETVARS} failed:\n{proc.stderr}")
+        print(f"Skipping icx: sourcing {ONEAPI_SETVARS} failed:\n{proc.stderr}")
+        return False
     os.environ.update(json.loads(proc.stdout))
-    if not shutil.which("icx"):
-        sys.exit(f"error: icx still not found after sourcing {ONEAPI_SETVARS}")
+    return shutil.which("icx") is not None
 
 
 def ensure_combinations_file() -> list:
@@ -258,7 +264,8 @@ def main() -> int:
     compilers = COMPILERS if args.all else [args.compiler]
     if not compilers or compilers == [None]:
         parser.error("give a compiler or use --all")
-    ensure_oneapi_env(compilers)
+    if not ensure_oneapi_env(compilers):
+        compilers = [c for c in compilers if os.path.basename(c) != "icx"]
     if args.all:
         missing = [c for c in compilers if not compiler_available(c)]
         if missing:
