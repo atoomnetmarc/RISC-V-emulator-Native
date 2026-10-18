@@ -168,8 +168,9 @@ static inline void RiscvEmulatorStore(uint32_t address, const void *source, uint
         return;
     }
 
-    // HALT test termination. RVMODEL_HALT_PASS writes 123456789 to 0x20000000;
-    // RVMODEL_HALT_FAIL writes 1. Both end in an infinite self-loop, so stop here.
+    // HALT test termination. RVMODEL_HALT_PASS writes TEST_PASS (123456789) to
+    // 0x20000000; RVMODEL_HALT_FAIL writes 1. Both end in an infinite self-loop,
+    // so stop here.
     if (address == 0x20000000) {
         memcpy(&testresult, source, 4);
         pleasestop = 1;

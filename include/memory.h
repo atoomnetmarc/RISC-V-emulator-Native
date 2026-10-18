@@ -16,10 +16,11 @@ SPDX-License-Identifier: Apache-2.0
 // Dynamically allocated in main() with RAM_LENGTH bytes.
 extern uint8_t *memory;
 
-uint8_t pleasestop;
+extern uint8_t pleasestop;
 
 // Test result written by the HALT store hook (0x20000000).
-// 123456789 means pass; any other value means fail.
+// TEST_PASS means pass; any other value means fail.
+#define TEST_PASS 123456789u
 extern uint32_t testresult;
 
 // Verbose instruction tracing, enabled with the -v command-line flag.

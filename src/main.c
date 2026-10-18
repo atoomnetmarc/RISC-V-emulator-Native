@@ -25,6 +25,8 @@ uint8_t *memory;
 
 RiscvEmulatorState_t RiscvEmulatorState;
 
+uint8_t pleasestop = 0;
+
 size_t loopcounter = 0;
 
 // Instruction limit set by -m <N>; 0 (the default) means unlimited.
@@ -60,7 +62,12 @@ int main(int argc, char *argv[]) {
             verbose = 1;
         } else if (strcmp(argv[i], "-m") == 0 && i + 1 < argc) {
             i++;
-            maxloopcounter = strtoul(argv[i], NULL, 0);
+            char *end;
+            maxloopcounter = strtoul(argv[i], &end, 0);
+            if (*end != '\0') {
+                printf("Error: -m requires a numeric argument, got '%s'.\n", argv[i]);
+                return 2;
+            }
         } else {
             binpath = argv[i];
         }
@@ -91,6 +98,12 @@ int main(int argc, char *argv[]) {
         return 2;
     }
     size_t binsize = fread(memory, sizeof(uint8_t), RAM_LENGTH, fbin);
+    if (ferror(fbin)) {
+        printf("Error reading %s.\n", binpath);
+        fclose(fbin);
+        free(memory);
+        return 2;
+    }
     if (verbose) {
         printf("Read %zu bytes.\n", binsize);
     }
@@ -168,7 +181,7 @@ int main(int argc, char *argv[]) {
 
     tcsetattr(STDIN_FILENO, TCSANOW, &orig_termios);
 
-    if (testresult == 123456789) {
+    if (testresult == TEST_PASS) {
         return 0;
     }
     return 1;
