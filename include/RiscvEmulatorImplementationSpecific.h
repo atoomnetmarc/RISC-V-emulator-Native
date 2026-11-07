@@ -121,8 +121,9 @@ static uint8_t uart_rx_char_nonblocking(void) {
  * @param address The byte address in memory.
  * @param destination The destination address to copy the data to.
  * @param length The length in bytes of the data.
+ * @return true when the address is mapped, false otherwise.
  */
-static inline void RiscvEmulatorLoad(uint32_t address, void *destination, uint8_t length) {
+static inline bool RiscvEmulatorLoad(uint32_t address, void *destination, uint8_t length) {
     if (address >= UART_ORIGIN && address < RAM_ORIGIN) {
         uint32_t offset = address - UART_ORIGIN;
         if (offset == UART_RECEIVE_BUFFER_OFFSET && length == 1) {
@@ -140,15 +141,15 @@ static inline void RiscvEmulatorLoad(uint32_t address, void *destination, uint8_
             // Unimplemented UART registers read as zero.
             memset(destination, 0, length);
         }
-        return;
+        return true;
     }
 
     if (address < RAM_ORIGIN || address >= RAM_ORIGIN + RAM_LENGTH) {
-        printf("Loading from outside RAM does not work. Stopping emulation.\n");
-        pleasestop = 1;
-    } else {
-        memcpy(destination, &memory[address - RAM_ORIGIN], length);
+        return false;
     }
+
+    memcpy(destination, &memory[address - RAM_ORIGIN], length);
+    return true;
 }
 
 /**
@@ -157,15 +158,16 @@ static inline void RiscvEmulatorLoad(uint32_t address, void *destination, uint8_
  * @param address The byte address in memory.
  * @param source The source address to copy the data from.
  * @param length The length in bytes of the data.
+ * @return true when the address is mapped, false otherwise.
  */
-static inline void RiscvEmulatorStore(uint32_t address, const void *source, uint8_t length) {
+static inline bool RiscvEmulatorStore(uint32_t address, const void *source, uint8_t length) {
     // UART console output. ACT4 RVMODEL_IO_WRITE_STR writes each character as a
     // word (sw) to 0x10000000. The character is in the low byte. Emit it to stdout.
     if (address == 0x10000000) {
         uint8_t ch;
         memcpy(&ch, source, 1);
         putchar(ch);
-        return;
+        return true;
     }
 
     // HALT test termination. RVMODEL_HALT_PASS writes TEST_PASS (123456789) to
@@ -174,17 +176,15 @@ static inline void RiscvEmulatorStore(uint32_t address, const void *source, uint
     if (address == 0x20000000) {
         memcpy(&testresult, source, 4);
         pleasestop = 1;
-        return;
+        return true;
     }
 
-    if (address >= RAM_ORIGIN + RAM_LENGTH) {
-        printf("Writing to address after RAM will not work. Stopping emulation.\n");
-        pleasestop = 1;
-    } else if (address >= RAM_ORIGIN) {
-        memcpy(&memory[address - RAM_ORIGIN], source, length);
-    } else {
-        printf("Writing to outside RAM does not work.\n");
+    if (address < RAM_ORIGIN || address >= RAM_ORIGIN + RAM_LENGTH) {
+        return false;
     }
+
+    memcpy(&memory[address - RAM_ORIGIN], source, length);
+    return true;
 }
 
 /**
@@ -206,26 +206,19 @@ static inline void RiscvEmulatorIllegalInstruction(RiscvEmulatorState_t *state _
     }
 }
 
-#if (RVE_E_ZICSR == 1)
-/**
- * Handles a fault where the CSR is not recognized.
- */
-static inline void RiscvEmulatorUnknownCSR(RiscvEmulatorState_t *state) {
-
-    printf("Unknown or not implemented CSR. pc: 0x%08X, instruction: 0x%08X, csr: 0x%04X\n",
-           state->programcounter,
-           state->instruction.value,
-           state->instruction.itypecsr.csr);
-
-    // Requesting stop.
-    pleasestop = 1;
-}
-#endif
-
 /**
  * Handles an ECALL.
+ *
+ * The exit() semihosting convention is only applied when there is no trap
+ * handler. A real kernel installs mtvec and expects the ECALL to trap.
  */
 static inline void RiscvEmulatorHandleECALL(RiscvEmulatorState_t *state) {
+#if (RVE_E_ZICSR == 1)
+    if (state->csr.mtvec.base != 0) {
+        return;
+    }
+#endif
+
     if (state->reg.a7 == 93) {
         printf("The ecall requested is exit(%u). This means we are done emulating.\n",
                state->reg.a0);
