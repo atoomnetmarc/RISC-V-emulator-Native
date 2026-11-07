@@ -6,6 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 */
 
 #include <fcntl.h>
+#include <poll.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -51,6 +52,14 @@ void RiscvEmulatorDisasmPrintf(const char *fmt, ...) {
     va_end(ap);
 }
 #endif
+
+// Drain all currently available stdin bytes into the emulated UART.
+static void poll_stdin(void) {
+    uint8_t ch;
+    while (read(STDIN_FILENO, &ch, 1) == 1) {
+        uart_rx_push(ch);
+    }
+}
 
 int main(int argc, char *argv[]) {
     // Parse -v to enable verbose instruction tracing and -m <N> to limit the
@@ -142,15 +151,20 @@ int main(int argc, char *argv[]) {
         loopcounter++;
         RiscvEmulatorLoop(&RiscvEmulatorState);
 
-        if (loopcounter % STDIN_POLL_INTERVAL == 0) {
-            uint8_t ch;
-            while (read(STDIN_FILENO, &ch, 1) == 1) {
-                uart_rx_push(ch);
-            }
+        if (RiscvEmulatorIsWaiting(&RiscvEmulatorState)) {
+            // The hart is parked in WFI. Poll stdin every idle iteration
+            // (the 4096-instruction interval does not apply) and sleep
+            // briefly so the host does not spin. The CLINT timer interrupt
+            // is the architectural wake source.
+            poll_stdin();
+            poll(NULL, 0, 1);
+        } else if (loopcounter % STDIN_POLL_INTERVAL == 0) {
+            poll_stdin();
         }
 
         // If this prints then consider adding a hook in RiscvEmulatorHook.h and implementing it in hook.c.
-        if (RiscvEmulatorState.instructionhandled == 0) {
+        if (RiscvEmulatorState.instructionhandled == 0 &&
+            RiscvEmulatorIsWaiting(&RiscvEmulatorState) == 0) {
             printf("pc: 0x%08X, instruction: 0x%08X, ???\n",
                    RiscvEmulatorState.programcounter,
                    RiscvEmulatorState.instruction.value);
