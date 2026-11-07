@@ -6,7 +6,9 @@ SPDX-License-Identifier: Apache-2.0
 */
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <string.h>
+#include <time.h>
 
 #include <RiscvEmulatorDefine.h>
 #include <RiscvEmulatorType.h>
@@ -15,6 +17,22 @@ SPDX-License-Identifier: Apache-2.0
 
 #ifndef RiscvEmulatorImplementationSpecific_H_
 #define RiscvEmulatorImplementationSpecific_H_
+
+/**
+ * Real-time counter for the `time` CSR.
+ *
+ * The RISC-V `time` CSR is a free-running real-time counter, not an
+ * instruction counter (zicntr.adoc:116). On the Native platform the host
+ * clock is the natural source. The unit is nanoseconds; the guest only
+ * requires a monotonic-enough counter, not a specific frequency.
+ */
+static inline uint64_t RiscvEmulatorTime(void) {
+    struct timespec ts = {0};
+    timespec_get(&ts, TIME_UTC);
+    return (uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec;
+}
+
+#define RVE_TIME_SOURCE(state) RiscvEmulatorTime()
 
 // The UART region implements the 16550-style receive path used by the
 // RISC-V-emulator-MicroPython port: a byte load at the receive buffer
