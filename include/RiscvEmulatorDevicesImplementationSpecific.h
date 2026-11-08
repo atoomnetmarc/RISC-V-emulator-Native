@@ -9,6 +9,7 @@ SPDX-License-Identifier: Apache-2.0
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 #include <RiscvEmulatorDefine.h>
 
@@ -33,6 +34,12 @@ static inline void board_reboot(void) {
 #include <RiscvEmulatorDevices.h>
 
 static syscon_t syscon = {.base = SYSCON_ORIGIN, .size = SYSCON_SIZE};
+
+// CLINT memory range.
+#define CLINT_ORIGIN 0x02000000
+#define CLINT_SIZE   0x10000
+
+static clint_t clint = {.base = CLINT_ORIGIN, .size = CLINT_SIZE, .mtimecmp = UINT64_MAX};
 
 // The UART region implements the 16550-style receive path used by the
 // RISC-V-emulator-MicroPython port: a byte load at the receive buffer
@@ -142,6 +149,10 @@ static uint8_t uart_rx_char_nonblocking(void) {
  * @return true when the address is mapped, false otherwise.
  */
 static inline bool RiscvDevicesLoad(uint32_t address, void *destination, uint8_t length) {
+    if (clint_read(&clint, address, destination, length)) {
+        return true;
+    }
+
     if (address >= UART_ORIGIN && address < RAM_ORIGIN) {
         uint32_t offset = address - UART_ORIGIN;
         if (offset == UART_RECEIVE_BUFFER_OFFSET && length == 1) {
@@ -178,6 +189,10 @@ static inline bool RiscvDevicesLoad(uint32_t address, void *destination, uint8_t
  * @return true when the address is mapped, false otherwise.
  */
 static inline bool RiscvDevicesStore(uint32_t address, const void *source, uint8_t length) {
+    if (clint_write(&clint, address, source, length)) {
+        return true;
+    }
+
     // UART console output. ACT4 RVMODEL_IO_WRITE_STR writes each character as a
     // word (sw) to 0x10000000. The character is in the low byte. Emit it to stdout.
     if (address == 0x10000000) {
@@ -192,6 +207,32 @@ static inline bool RiscvDevicesStore(uint32_t address, const void *source, uint8
     }
 
     return false;
+}
+
+/**
+ * Advances the CLINT from the host clock and bridges the pending bits into mip.
+ */
+static inline void RiscvDevicesTick(RiscvEmulatorState_t *state) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    uint64_t now_us = (uint64_t)ts.tv_sec * 1000000u + (uint32_t)ts.tv_nsec / 1000u;
+    clint_tick(&clint, now_us);
+
+#if (RVE_E_ZICSR == 1)
+    if (clint_timer_pending(&clint)) {
+        state->csr.mip.mip |= (1u << 7);
+    } else {
+        state->csr.mip.mip &= ~(1u << 7);
+    }
+
+    if (clint_software_pending(&clint)) {
+        state->csr.mip.mip |= (1u << 3);
+    } else {
+        state->csr.mip.mip &= ~(1u << 3);
+    }
+#else
+    (void)state;
+#endif
 }
 
 #endif

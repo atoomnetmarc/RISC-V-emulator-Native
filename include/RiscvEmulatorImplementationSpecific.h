@@ -9,7 +9,6 @@ SPDX-License-Identifier: Apache-2.0
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include <time.h>
 
 #include <RiscvEmulatorDefine.h>
 #include <RiscvEmulatorType.h>
@@ -23,22 +22,10 @@ SPDX-License-Identifier: Apache-2.0
 /**
  * Real-time counter for the `time` CSR.
  *
- * The RISC-V `time` CSR is a free-running real-time counter, not an
- * instruction counter (zicntr.adoc:116). On the Native platform the host
- * clock is the natural source. The unit is nanoseconds; the guest only
- * requires a monotonic-enough counter, not a specific frequency.
+ * The CLINT mtime is the single timebase for the `time` CSR and the timer.
+ * The board advances it in microseconds before each loop iteration.
  */
-static inline uint64_t RiscvEmulatorTime(void) {
-    struct timespec ts = {0};
-#if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 201112L)
-    timespec_get(&ts, TIME_UTC);
-#else
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-#endif
-    return (uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec;
-}
-
-#define RVE_TIME_SOURCE(state) RiscvEmulatorTime()
+#define RVE_TIME_SOURCE(state) (clint.mtime)
 
 /**
  * Loads bytes from emulator to RISC-V.

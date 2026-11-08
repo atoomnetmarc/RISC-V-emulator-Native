@@ -5,6 +5,8 @@ SPDX-License-Identifier: Apache-2.0
 
 */
 
+#define _POSIX_C_SOURCE 199309L
+
 #include <fcntl.h>
 #include <poll.h>
 #include <stdarg.h>
@@ -149,6 +151,7 @@ int main(int argc, char *argv[]) {
 
     for (;;) {
         loopcounter++;
+        RiscvDevicesTick(&RiscvEmulatorState);
         RiscvEmulatorLoop(&RiscvEmulatorState);
 
         if (RiscvEmulatorIsWaiting(&RiscvEmulatorState)) {
