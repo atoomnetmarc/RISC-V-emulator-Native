@@ -11,7 +11,14 @@ SPDX-License-Identifier: Apache-2.0
 #define MEMORY_H_
 
 // Size in bytes.
-#define RAM_LENGTH 0x1000000
+#define RAM_LENGTH 0x4000000
+
+// Reserved at the top of RAM for the device tree blob.
+#define DTB_RESERVE 0x4000
+
+// SYSCON / SiFive test finisher memory range.
+#define SYSCON_ORIGIN 0x00100000
+#define SYSCON_SIZE   0x1000
 
 // Dynamically allocated in main() with RAM_LENGTH bytes.
 extern uint8_t *memory;

@@ -18,6 +18,9 @@ set(RVE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/..")
 set(RVE_EMULATOR_DIR "${RVE_ROOT}/../RISC-V-emulator"
     CACHE PATH "Path to the RISC-V-emulator repository")
 
+set(RVE_DEVICES_DIR "${RVE_ROOT}/../RISC-V-emulator-Devices"
+    CACHE PATH "Path to the RISC-V-emulator-Devices repository")
+
 add_executable(program
   "${RVE_ROOT}/src/main.c"
 )
@@ -27,6 +30,7 @@ target_include_directories(program PRIVATE
   "${RVE_ROOT}/src"
   "${RVE_EMULATOR_DIR}/include"
   "${RVE_EMULATOR_DIR}"
+  "${RVE_DEVICES_DIR}/include"
 )
 
 # C2x standard (CMake knows this as c_std_23; fall back to the raw flag).
@@ -41,6 +45,7 @@ set(RVE_EXTRA_DEFINES ""
 separate_arguments(RVE_EXTRA_DEFINES)
 target_compile_definitions(program PRIVATE
   RVE_E_HOOK=1
+  RVE_E_DISASM=1
   RVE_E_MISALIGNED=1
   ${RVE_EXTRA_DEFINES}
 )
