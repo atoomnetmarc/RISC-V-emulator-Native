@@ -59,7 +59,7 @@ void RiscvEmulatorDisasmPrintf(const char *fmt, ...) {
 static void poll_stdin(void) {
     uint8_t ch;
     while (read(STDIN_FILENO, &ch, 1) == 1) {
-        uart_rx_push(ch);
+        uart16550_rx_push(&uart, ch);
     }
 }
 
