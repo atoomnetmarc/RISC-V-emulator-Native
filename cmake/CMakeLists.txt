@@ -45,6 +45,7 @@ set(RVE_EXTRA_DEFINES ""
 separate_arguments(RVE_EXTRA_DEFINES)
 target_compile_definitions(program PRIVATE
   RVE_E_HOOK=1
+  RVE_E_DISASM=1
   RVE_E_MISALIGNED=1
   ${RVE_EXTRA_DEFINES}
 )
