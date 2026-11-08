@@ -28,6 +28,11 @@ The emulator loads the DTB into the top 16 KB of RAM and passes its physical add
 - `-v [<start>]` prints the instruction trace, optionally from instruction `<start>`.
 - `-p <interval>` prints the PC every `<interval>` instructions.
 - `-m <instructions>` stops after `<instructions>` instructions.
+- `-t [<count>]` logs traps with the machine CSRs and key registers, optionally only the first `<count>` traps.
+- `-r` dumps all integer registers and the machine CSRs at stop.
+- `-d <address>,<length>` hexdumps `<length>` bytes of RAM from `<address>` at stop.
+- `-s <address>` stops before the instruction at `<address>` and dumps the registers.
+- `-w <address>[,<length>]` stops on the first load or store that overlaps the range and dumps the registers.
 
 ## Verification
 
