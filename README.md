@@ -2,6 +2,8 @@
 
 This is an implementation of my [RISC-V cpu emulator](https://github.com/atoomnetmarc/RISC-V-emulator) that can compile into an operating system executable.
 
+The platform devices (CLINT, 16550 UART, SYSCON, PLIC) come from the shared [RISC-V-emulator-Devices](https://github.com/atoomnetmarc/RISC-V-emulator-Devices) library. The port wires them in `RiscvEmulatorLoad` and `RiscvEmulatorStore`.
+
 Two build systems are supported:
 
 - [PlatformIO Native](README-platformio.md)
