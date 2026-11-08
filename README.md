@@ -12,6 +12,23 @@ Two build systems are supported:
 Both produce binaries for the RISC-V-emulator-ACT test wrapper in
 `binaries/<compiler-tag>/<isa>`.
 
+## Linux boot
+
+Build a DTB from the sample DTS and pass it with `-b`:
+
+```sh
+dtc -I dts -O dtb -o linux.dtb configs/linux.dts
+./binaries/gcc/RV32I -b linux.dtb Image
+```
+
+The emulator loads the DTB into the top 16 KB of RAM and passes its physical address in `a1`. The hart ID is `0` in `a0`. The sample DTS declares 64 MB of RAM, a CLINT at `0x02000000`, a 16550 UART at `0x10000000` and a SYSCON at `0x00100000`.
+
+## Debugging
+
+- `-v [<start>]` prints the instruction trace, optionally from instruction `<start>`.
+- `-p <interval>` prints the PC every `<interval>` instructions.
+- `-m <instructions>` stops after `<instructions>` instructions.
+
 ## Verification
 
 After any source change (also in the emulator repo), run both:
