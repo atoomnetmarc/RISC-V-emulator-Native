@@ -28,7 +28,11 @@ SPDX-License-Identifier: Apache-2.0
  */
 static inline uint64_t RiscvEmulatorTime(void) {
     struct timespec ts = {0};
+#if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 201112L)
     timespec_get(&ts, TIME_UTC);
+#else
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+#endif
     return (uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec;
 }
 
