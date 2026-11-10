@@ -31,7 +31,7 @@
             reg = <0x00>;
             status = "okay";
             compatible = "riscv";
-            riscv,isa = "rv32ima";
+            riscv,isa = "rv32ima_zicsr_zifencei";
             mmu-type = "riscv,none";
 
             interrupt-controller {
