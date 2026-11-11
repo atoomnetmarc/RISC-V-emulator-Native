@@ -2,7 +2,7 @@
 
 This is an implementation of my [RISC-V cpu emulator](https://github.com/atoomnetmarc/RISC-V-emulator) that can compile into an operating system executable.
 
-The platform devices (CLINT, 16550 UART, SYSCON, PLIC, virtio-blk and virtio-console) come from the shared [RISC-V-emulator-Devices](https://github.com/atoomnetmarc/RISC-V-emulator-Devices) library. The port wires them in `RiscvEmulatorLoad` and `RiscvEmulatorStore`.
+The platform devices (CLINT, 16550 UART, SYSCON, PLIC, virtio-blk, virtio-console and virtio-net) come from the shared [RISC-V-emulator-Devices](https://github.com/atoomnetmarc/RISC-V-emulator-Devices) library. The port wires them in `RiscvEmulatorLoad` and `RiscvEmulatorStore`.
 
 Two build systems are supported:
 
@@ -21,7 +21,12 @@ dtc -I dts -O dtb -o linux.dtb configs/linux.dts
 ./binaries/gcc/RV32I -b linux.dtb Image
 ```
 
-The emulator loads the DTB into the top 16 KB of RAM and passes its physical address in `a1`. The hart ID is `0` in `a0`. The sample DTS declares 64 MB of RAM, a CLINT at `0x02000000`, a 16550 UART at `0x10000000` and a SYSCON at `0x00100000`.
+The emulator loads the DTB into the top 16 KB of RAM and passes its physical address in `a1`. The hart ID is `0` in `a0`. The sample DTS declares 64 MB of RAM, a CLINT at `0x02000000`, a 16550 UART at `0x10000000`, a SYSCON at `0x00100000`, virtio-blk at `0x10001000`, virtio-console at `0x10002000` and virtio-net at `0x10003000`.
+
+## Devices
+
+- `-D <file>` attaches a disk image to virtio-blk.
+- `-N <ifname>` attaches an existing TAP interface to virtio-net. The interface must already exist and be up. The emulator opens `/dev/net/tun` with `O_NONBLOCK`, verifies the flag with `fcntl`, and polls the descriptor with a zero timeout before reading, so an idle TAP never blocks the main loop.
 
 ## Debugging
 

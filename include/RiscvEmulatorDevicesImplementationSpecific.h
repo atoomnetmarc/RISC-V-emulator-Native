@@ -40,6 +40,18 @@ static inline void board_console_write(const void *buffer, uint32_t length) {
 
 #define RVE_DEV_VIRTIO_CONSOLE_TX(buffer, length) board_console_write(buffer, length)
 
+// TAP file descriptor, opened by main() when -N <ifname> is given.
+extern int tap_fd;
+
+// Writes one Ethernet frame to the TAP interface.
+static inline void board_net_write(const void *buffer, uint32_t length) {
+    if (tap_fd >= 0) {
+        (void)write(tap_fd, buffer, length);
+    }
+}
+
+#define RVE_DEV_VIRTIO_NET_TX(buffer, length) board_net_write(buffer, length)
+
 // Disk file descriptor, opened by main() when -D <file> is given.
 extern int disk_fd;
 
@@ -110,6 +122,12 @@ static virtio_blk_t virtio_blk;
 
 static virtio_console_t virtio_console;
 
+// virtio-net memory range.
+#define VIRTIO_NET_ORIGIN 0x10003000
+#define VIRTIO_NET_SIZE   0x1000
+
+static virtio_net_t virtio_net;
+
 /**
  * Loads bytes from the devices to the RISC-V hart.
  *
@@ -136,6 +154,10 @@ static inline bool RiscvDevicesLoad(uint32_t address, void *destination, uint8_t
     }
 
     if (virtio_console_read(&virtio_console, address, destination, length)) {
+        return true;
+    }
+
+    if (virtio_net_read(&virtio_net, address, destination, length)) {
         return true;
     }
 
@@ -175,6 +197,10 @@ static inline bool RiscvDevicesStore(uint32_t address, const void *source, uint8
         return true;
     }
 
+    if (virtio_net_write(&virtio_net, address, source, length)) {
+        return true;
+    }
+
     if (syscon_write(&syscon, address, source, length)) {
         return true;
     }
@@ -193,6 +219,7 @@ static inline void RiscvDevicesTick(RiscvEmulatorState_t *state) {
 
     plic_set_pending(&plic, 1, virtio_blk_irq_pending(&virtio_blk));
     plic_set_pending(&plic, 2, virtio_console_irq_pending(&virtio_console));
+    plic_set_pending(&plic, 3, virtio_net_irq_pending(&virtio_net));
 
 #if (RVE_E_ZICSR == 1)
     if (clint_timer_pending(&clint)) {

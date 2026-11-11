@@ -6,13 +6,17 @@ SPDX-License-Identifier: Apache-2.0
 */
 
 #define _POSIX_C_SOURCE 200809L
+#define _DEFAULT_SOURCE
 
 #include <fcntl.h>
+#include <linux/if_tun.h>
+#include <net/if.h>
 #include <poll.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <termios.h>
 #include <unistd.h>
@@ -31,6 +35,9 @@ uint8_t *memory;
 
 // Disk file descriptor, opened by -D <file>.
 int disk_fd = -1;
+
+// TAP file descriptor, opened by -N <ifname>.
+int tap_fd = -1;
 
 RiscvEmulatorState_t RiscvEmulatorState;
 
@@ -239,18 +246,41 @@ static void poll_stdin(void) {
     }
 }
 
+// Drain all currently available TAP frames into the emulated network device.
+// The descriptor is nonblocking, but poll() with a zero timeout keeps the main
+// loop from entering read() when no frame is queued.
+static void poll_tap(void) {
+    uint8_t frame[VIRTIO_NET_BUFFER_SIZE];
+    ssize_t length;
+
+    if (tap_fd < 0) {
+        return;
+    }
+
+    struct pollfd pfd = {.fd = tap_fd, .events = POLLIN, .revents = 0};
+    if (poll(&pfd, 1, 0) <= 0) {
+        return;
+    }
+
+    while ((length = read(tap_fd, frame, sizeof(frame))) > 0) {
+        virtio_net_rx_push(&virtio_net, frame, (uint32_t)length);
+    }
+}
+
 int main(int argc, char *argv[]) {
     // Parse -v [<start>] to enable verbose instruction tracing from an
     // instruction count, -m <N> to limit the number of simulated instructions
     // (0 = unlimited, the default), -p <N> to print the PC every N
     // instructions, -b <dtb> to load a device tree blob, -D <file> to attach
-    // a disk image, -t [<count>] to log traps, -r to dump registers at stop,
-    // -d <address>,<length> to dump RAM at stop, -s <address> to stop at a PC
-    // and -w <address>[,<length>] to stop on a load or store. The binary path
-    // is the last argument; run_test.sh passes it via elf2bin.sh.
+    // a disk image, -N <ifname> to attach a TAP interface, -t [<count>] to log
+    // traps, -r to dump registers at stop, -d <address>,<length> to dump RAM
+    // at stop, -s <address> to stop at a PC and -w <address>[,<length>] to
+    // stop on a load or store. The binary path is the last argument;
+    // run_test.sh passes it via elf2bin.sh.
     const char *binpath = NULL;
     const char *dtbpath = NULL;
     const char *diskpath = NULL;
+    const char *tappath = NULL;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-v") == 0) {
             verbose = 1;
@@ -284,6 +314,9 @@ int main(int argc, char *argv[]) {
         } else if (strcmp(argv[i], "-D") == 0 && i + 1 < argc) {
             i++;
             diskpath = argv[i];
+        } else if (strcmp(argv[i], "-N") == 0 && i + 1 < argc) {
+            i++;
+            tappath = argv[i];
         } else if (strcmp(argv[i], "-t") == 0) {
             trap_log = 1;
             if (i + 1 < argc) {
@@ -446,8 +479,49 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    // Open the optional TAP interface and attach it to virtio-net.
+    if (tappath != NULL) {
+        // O_NONBLOCK at open time is authoritative; the fcntl below only
+        // verifies it so a failed flag change cannot leave the main loop
+        // blocking in read().
+        tap_fd = open("/dev/net/tun", O_RDWR | O_NONBLOCK);
+        if (tap_fd < 0) {
+            free(memory);
+            printf("Error: cannot open /dev/net/tun.\n");
+            return 2;
+        }
+
+        struct ifreq ifr;
+        memset(&ifr, 0, sizeof(ifr));
+        ifr.ifr_flags = IFF_TAP | IFF_NO_PI;
+        strncpy(ifr.ifr_name, tappath, IFNAMSIZ - 1);
+        if (ioctl(tap_fd, TUNSETIFF, &ifr) < 0) {
+            close(tap_fd);
+            tap_fd = -1;
+            free(memory);
+            printf("Error: cannot attach to TAP interface %s.\n", tappath);
+            return 2;
+        }
+
+        int tap_flags = fcntl(tap_fd, F_GETFL, 0);
+        if (tap_flags < 0 || (tap_flags & O_NONBLOCK) == 0) {
+            close(tap_fd);
+            tap_fd = -1;
+            free(memory);
+            printf("Error: cannot set the TAP interface nonblocking.\n");
+            return 2;
+        }
+
+        if (verbose) {
+            printf("Attached TAP interface %s.\n", tappath);
+        }
+    }
+
+    static const uint8_t net_mac[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
+
     virtio_blk_init(&virtio_blk, VIRTIO_BLK_ORIGIN, VIRTIO_BLK_SIZE, memory, RAM_ORIGIN, RAM_LENGTH, disk_capacity);
     virtio_console_init(&virtio_console, VIRTIO_CONSOLE_ORIGIN, VIRTIO_CONSOLE_SIZE, memory, RAM_ORIGIN, RAM_LENGTH);
+    virtio_net_init(&virtio_net, VIRTIO_NET_ORIGIN, VIRTIO_NET_SIZE, memory, RAM_ORIGIN, RAM_LENGTH, net_mac);
 
     if (verbose) {
         printf("RiscvEmulatorInit()\n");
@@ -501,14 +575,16 @@ int main(int argc, char *argv[]) {
         }
 
         if (RiscvEmulatorIsWaiting(&RiscvEmulatorState)) {
-            // The hart is parked in WFI. Poll stdin every idle iteration
-            // (the 4096-instruction interval does not apply) and sleep
-            // briefly so the host does not spin. The CLINT timer interrupt
+            // The hart is parked in WFI. Poll stdin and the TAP interface every
+            // idle iteration (the 4096-instruction interval does not apply) and
+            // sleep briefly so the host does not spin. The CLINT timer interrupt
             // is the architectural wake source.
             poll_stdin();
+            poll_tap();
             poll(NULL, 0, 1);
         } else if (loopcounter % STDIN_POLL_INTERVAL == 0) {
             poll_stdin();
+            poll_tap();
         }
 
         // If this prints then the instruction is not implemented.
@@ -550,6 +626,10 @@ int main(int argc, char *argv[]) {
 
     if (disk_fd >= 0) {
         close(disk_fd);
+    }
+
+    if (tap_fd >= 0) {
+        close(tap_fd);
     }
 
     tcsetattr(STDIN_FILENO, TCSANOW, &orig_termios);
