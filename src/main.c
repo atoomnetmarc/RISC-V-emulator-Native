@@ -5,7 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 
 */
 
-#define _POSIX_C_SOURCE 199309L
+#define _POSIX_C_SOURCE 200809L
 
 #include <fcntl.h>
 #include <poll.h>
@@ -13,6 +13,7 @@ SPDX-License-Identifier: Apache-2.0
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <termios.h>
 #include <unistd.h>
 
@@ -27,6 +28,9 @@ SPDX-License-Identifier: Apache-2.0
 #include "memory.h"
 
 uint8_t *memory;
+
+// Disk file descriptor, opened by -D <file>.
+int disk_fd = -1;
 
 RiscvEmulatorState_t RiscvEmulatorState;
 
@@ -238,13 +242,14 @@ int main(int argc, char *argv[]) {
     // Parse -v [<start>] to enable verbose instruction tracing from an
     // instruction count, -m <N> to limit the number of simulated instructions
     // (0 = unlimited, the default), -p <N> to print the PC every N
-    // instructions, -b <dtb> to load a device tree blob, -t [<count>] to log
-    // traps, -r to dump registers at stop, -d <address>,<length> to dump RAM
-    // at stop, -s <address> to stop at a PC and -w <address>[,<length>] to
-    // stop on a load or store. The binary path is the last argument;
-    // run_test.sh passes it via elf2bin.sh.
+    // instructions, -b <dtb> to load a device tree blob, -D <file> to attach
+    // a disk image, -t [<count>] to log traps, -r to dump registers at stop,
+    // -d <address>,<length> to dump RAM at stop, -s <address> to stop at a PC
+    // and -w <address>[,<length>] to stop on a load or store. The binary path
+    // is the last argument; run_test.sh passes it via elf2bin.sh.
     const char *binpath = NULL;
     const char *dtbpath = NULL;
+    const char *diskpath = NULL;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-v") == 0) {
             verbose = 1;
@@ -275,6 +280,9 @@ int main(int argc, char *argv[]) {
         } else if (strcmp(argv[i], "-b") == 0 && i + 1 < argc) {
             i++;
             dtbpath = argv[i];
+        } else if (strcmp(argv[i], "-D") == 0 && i + 1 < argc) {
+            i++;
+            diskpath = argv[i];
         } else if (strcmp(argv[i], "-t") == 0) {
             trap_log = 1;
             if (i + 1 < argc) {
@@ -339,7 +347,7 @@ int main(int argc, char *argv[]) {
     }
 
     if (binpath == NULL) {
-        printf("Usage: %s [-v [<start>]] [-m <instructions>] [-p <interval>] [-b <dtb>] [-t [<count>]] [-r] [-d <address>,<length>] [-s <address>] [-w <address>[,<length>]] <binary>\n", argv[0]);
+        printf("Usage: %s [-v [<start>]] [-m <instructions>] [-p <interval>] [-b <dtb>] [-D <disk>] [-t [<count>]] [-r] [-d <address>,<length>] [-s <address>] [-w <address>[,<length>]] <binary>\n", argv[0]);
         return 2;
     }
 
@@ -411,6 +419,33 @@ int main(int argc, char *argv[]) {
             printf("Loaded %ld bytes of DTB at 0x%08X.\n", dtbsize, dtb_address);
         }
     }
+
+    // Open the optional disk image and attach it to virtio-blk.
+    uint64_t disk_capacity = 0;
+    if (diskpath != NULL) {
+        disk_fd = open(diskpath, O_RDWR);
+        if (disk_fd < 0) {
+            free(memory);
+            printf("file not found: %s\n", diskpath);
+            return 2;
+        }
+
+        struct stat st;
+        if (fstat(disk_fd, &st) != 0 || st.st_size <= 0 || (st.st_size % 512) != 0) {
+            close(disk_fd);
+            disk_fd = -1;
+            free(memory);
+            printf("Error: disk size must be a positive multiple of 512 bytes.\n");
+            return 2;
+        }
+
+        disk_capacity = (uint64_t)st.st_size / 512u;
+        if (verbose) {
+            printf("Attached %s with %llu sectors.\n", diskpath, (unsigned long long)disk_capacity);
+        }
+    }
+
+    virtio_blk_init(&virtio_blk, VIRTIO_BLK_ORIGIN, VIRTIO_BLK_SIZE, memory, RAM_ORIGIN, RAM_LENGTH, disk_capacity);
 
     if (verbose) {
         printf("RiscvEmulatorInit()\n");
@@ -510,6 +545,10 @@ int main(int argc, char *argv[]) {
     printf("Allocated %zu bytes of RAM (%zu bytes used by the binary).\n",
            (size_t)RAM_LENGTH, binsize);
     free(memory);
+
+    if (disk_fd >= 0) {
+        close(disk_fd);
+    }
 
     tcsetattr(STDIN_FILENO, TCSANOW, &orig_termios);
 

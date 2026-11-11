@@ -12,7 +12,7 @@
     model = "riscv-minimal-nommu,qemu";
 
     chosen {
-        bootargs = "earlycon=uart8250,mmio,0x10000000,1000000 console=ttyS0";
+        bootargs = "earlycon=uart8250,mmio,0x10000000,1000000 console=ttyS0 root=/dev/vda1 rw rootfstype=ext4 rdinit=/nonexistent";
     };
 
     memory@80000000 {
@@ -87,6 +87,23 @@
             interrupts-extended = <0x02 0x03 0x02 0x07>;
             reg = <0x00 0x02000000 0x00 0x10000>;
             compatible = "sifive,clint0\0riscv,clint0";
+        };
+
+        plic@c000000 {
+            compatible = "sifive,plic-1.0.0";
+            reg = <0x00 0x0c000000 0x00 0x400000>;
+            #interrupt-cells = <0x01>;
+            interrupt-controller;
+            riscv,ndev = <0x1f>;
+            interrupts-extended = <0x02 0x0b>;
+            phandle = <0x05>;
+        };
+
+        virtio_mmio@10001000 {
+            compatible = "virtio,mmio";
+            reg = <0x00 0x10001000 0x00 0x1000>;
+            interrupts = <0x01>;
+            interrupt-parent = <0x05>;
         };
     };
 };
