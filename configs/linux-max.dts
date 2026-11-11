@@ -12,7 +12,7 @@
     model = "riscv-minimal-nommu,qemu";
 
     chosen {
-        bootargs = "earlycon=uart8250,mmio,0x10000000,1000000 console=ttyS0 root=/dev/vda1 rw rootfstype=ext4 rdinit=/nonexistent";
+        bootargs = "earlycon=uart8250,mmio,0x10000000,1000000 console=hvc0 root=/dev/vda1 rw rootfstype=ext4 rdinit=/nonexistent";
     };
 
     memory@80000000 {
@@ -103,6 +103,13 @@
             compatible = "virtio,mmio";
             reg = <0x00 0x10001000 0x00 0x1000>;
             interrupts = <0x01>;
+            interrupt-parent = <0x05>;
+        };
+
+        virtio_mmio@10002000 {
+            compatible = "virtio,mmio";
+            reg = <0x00 0x10002000 0x00 0x1000>;
+            interrupts = <0x02>;
             interrupt-parent = <0x05>;
         };
     };

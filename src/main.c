@@ -230,11 +230,12 @@ void RiscvEmulatorHook(const RiscvEmulatorState_t *state, const RiscvEmulatorHoo
     }
 }
 
-// Drain all currently available stdin bytes into the emulated UART.
+// Drain all currently available stdin bytes into the emulated UART and console.
 static void poll_stdin(void) {
     uint8_t ch;
     while (read(STDIN_FILENO, &ch, 1) == 1) {
         uart16550_rx_push(&uart, ch);
+        virtio_console_rx_push(&virtio_console, ch);
     }
 }
 
@@ -446,6 +447,7 @@ int main(int argc, char *argv[]) {
     }
 
     virtio_blk_init(&virtio_blk, VIRTIO_BLK_ORIGIN, VIRTIO_BLK_SIZE, memory, RAM_ORIGIN, RAM_LENGTH, disk_capacity);
+    virtio_console_init(&virtio_console, VIRTIO_CONSOLE_ORIGIN, VIRTIO_CONSOLE_SIZE, memory, RAM_ORIGIN, RAM_LENGTH);
 
     if (verbose) {
         printf("RiscvEmulatorInit()\n");

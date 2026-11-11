@@ -33,6 +33,13 @@ static inline void board_reboot(void) {
 #define RVE_DEV_SYSCON_REBOOT()       board_reboot()
 #define RVE_DEV_UART16550_TX(byte)    putchar(byte)
 
+// Writes console output to the host console.
+static inline void board_console_write(const void *buffer, uint32_t length) {
+    fwrite(buffer, 1, length, stdout);
+}
+
+#define RVE_DEV_VIRTIO_CONSOLE_TX(buffer, length) board_console_write(buffer, length)
+
 // Disk file descriptor, opened by main() when -D <file> is given.
 extern int disk_fd;
 
@@ -95,7 +102,13 @@ static plic_t plic = {.base = PLIC_ORIGIN, .size = PLIC_SIZE};
 #define VIRTIO_BLK_ORIGIN 0x10001000
 #define VIRTIO_BLK_SIZE   0x1000
 
-static virtio_blk_t virtio_blk = {.base = VIRTIO_BLK_ORIGIN, .size = VIRTIO_BLK_SIZE};
+static virtio_blk_t virtio_blk;
+
+// virtio-console memory range.
+#define VIRTIO_CONSOLE_ORIGIN 0x10002000
+#define VIRTIO_CONSOLE_SIZE   0x1000
+
+static virtio_console_t virtio_console;
 
 /**
  * Loads bytes from the devices to the RISC-V hart.
@@ -119,6 +132,10 @@ static inline bool RiscvDevicesLoad(uint32_t address, void *destination, uint8_t
     }
 
     if (virtio_blk_read(&virtio_blk, address, destination, length)) {
+        return true;
+    }
+
+    if (virtio_console_read(&virtio_console, address, destination, length)) {
         return true;
     }
 
@@ -154,6 +171,10 @@ static inline bool RiscvDevicesStore(uint32_t address, const void *source, uint8
         return true;
     }
 
+    if (virtio_console_write(&virtio_console, address, source, length)) {
+        return true;
+    }
+
     if (syscon_write(&syscon, address, source, length)) {
         return true;
     }
@@ -171,6 +192,7 @@ static inline void RiscvDevicesTick(RiscvEmulatorState_t *state) {
     clint_tick(&clint, now_us);
 
     plic_set_pending(&plic, 1, virtio_blk_irq_pending(&virtio_blk));
+    plic_set_pending(&plic, 2, virtio_console_irq_pending(&virtio_console));
 
 #if (RVE_E_ZICSR == 1)
     if (clint_timer_pending(&clint)) {
