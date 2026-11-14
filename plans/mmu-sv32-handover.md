@@ -11,47 +11,25 @@ next-step note.
 
 | Environment | Pass | Fail |
 | --- | --- | --- |
-| `rv32izicntr_zicsr_sv32` (minimal) | 119 | 38 |
-| `rv32imazicntr_zicsr_zifencei_sv32` (Linux set) | 143 | 48 |
-| `rv32imacbzicntr_zicsr_zifencei_sv32` (maximal) | 202 | 49 |
+| `rv32izicntr_zicsr_sv32` (minimal) | 127 | 30 |
+| `rv32imazicntr_zicsr_zifencei_sv32` (Linux set) | 161 | 30 |
+| `rv32imacbzicntr_zicsr_zifencei_sv32` (maximal) | 220 | 31 |
 
-The `I` suite is 39/39 in all three. The `S` suite is 7/8; only
-`S_scsr_ro-00` (cycle counter) fails.
+The `I` suite is 39/39 in all three. The `S` suite is 8/8. The
+`Sv_Exceptions` group passes in the A-enabled sets. The `Sm` group passes
+except `Sm_Zicntr-00`, `Sm_mcsr_cntr-00` and `Sm_xret-00`.
 
-## Next step: the Sv_Exceptions group
+## Next step: M3
 
-The `Sv_ExceptionsZaamo`/`Sv_ExceptionsZalrsc` tests fail only in the
-A-enabled sets (the minimal set does not generate them). The log shows the
-signature offset mismatch (`0xffff9310` vs `0x14`), the same symptom as an
-unexpected trap that aborts the test without restoring `sp`.
+The remaining failures are the `InterruptsS`/`InterruptsSm` group and three `Sm` tests that depend on M3:
 
-The trace shows the test reaches its failure-message path:
-`rvmodel_io_write_str` writes each character to the physical console address
-`0x10000000`. Under Sv32 that virtual address is unmapped, so the store raises
-a store/AMO page fault, the handler treats it as unexpected, and the test ends
-with the save-area pointer as the signature pointer. The console write masks
-the first unexpected trap, which is the actual test failure.
-
-Plan:
-
-1. Reproduce one test, for example
-   `Sv_ExceptionsZaamo_sv32_exceptions_Zaamo_Smode-00`, with `-v 0 -t`.
-2. Find the first trap that the handler treats as unexpected, before the
-   console write. Compare `scause`, `sepc` and `stval` against the expected
-   trap signature.
-3. Check the AMO/Zalrsc exception path: misaligned AMO priority, access fault
-   versus page fault, and the `stval` value.
-4. Make the failure-message path translation-safe (map the console or use a
-   physical-address access) so the real failure is visible.
+- `Sm_xret-00` uses `RVTEST_TSBI_GOTO_SMODE`, which needs the SBI to enter S-mode.
+- `Sm_mcsr_cntr-00` writes the memory-mapped `mtime` and reads the `time` CSR, which needs the CLINT.
+- `Sm_Zicntr-00` counts the instructions in the ecall path; the emulator counts one more than the reference.
 
 ## After that
 
-1. Counter group: `S_scsr_ro-00` reads the cycle counter before and after a
-   write and expects the same value, but the counter increments.
-2. `Sm` group: the shadow-stack (`Zicfiss`) and the M-mode CSR tests.
-3. M3: the SBI layer and the S-mode interrupt sources
-   (`InterruptsS`/`InterruptsSm`).
-4. Run the Svade and Sstvala coverages on the three Sv32 environments.
+1. Run the Svade and Sstvala coverages on the three Sv32 environments.
 
 ## Rules
 
