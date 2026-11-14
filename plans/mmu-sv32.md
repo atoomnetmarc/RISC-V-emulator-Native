@@ -29,15 +29,21 @@ Out of scope:
 
 The emulator core implements M-mode, S-mode and U-mode. `state->privilege` holds 0, 1 or 3.
 
-`satp` is writable with MODE and PPN; ASID reads as zero. `medeleg` and `mideleg` are writable. The S-mode CSRs `sstatus`, `stvec`, `sscratch`, `sepc`, `scause`, `stval`, `sie`, `sip` and `scounteren` exist.
+`satp` is writable with MODE, ASID and PPN. `medeleg` and `mideleg` are writable. The S-mode CSRs `sstatus`, `stvec`, `sscratch`, `sepc`, `scause`, `stval`, `sie`, `sip`, `scounteren` and `senvcfg` exist. `senvcfg` has only FIOM writable; the cache-block, pointer-masking, Zicfilp and Zicfiss fields are read-only zero.
 
-`SRET` and `SFENCE.VMA` are decoded. `ECALL` from S-mode raises cause 9. `mstatus.MPP` holds 0, 1 or 3; `SIE`, `SPIE`, `SPP`, `SUM`, `MXR`, `TW`, `TSR` and `TVM` are writable.
+`SRET` and `SFENCE.VMA` are decoded. `ECALL` from S-mode raises cause 9. `mstatus.MPP` holds 0, 1 or 3; `SIE`, `SPIE`, `SPP`, `MPRV`, `SUM`, `MXR`, `TW`, `TSR` and `TVM` are writable.
 
-Fetch and data accesses go through `RiscvEmulatorLoadVirtual()` and `RiscvEmulatorStoreVirtual()`. The wrappers translate when `satp.MODE` is Sv32 and the privilege is S-mode or U-mode, split a page-crossing access into two chunks, and call the physical `RiscvEmulatorLoad()` or `RiscvEmulatorStore()`. The walker implements Sv32 with 4 KiB pages, the permission checks, Svade and page faults. The board has no SBI layer. The CLINT sets `mip.MTIP`; the PLIC sets `mip.MEIP`.
+Fetch and data accesses go through `RiscvEmulatorLoadVirtual()` and `RiscvEmulatorStoreVirtual()`. The wrappers translate when `satp.MODE` is Sv32 and the effective privilege is S-mode or U-mode, split a page-crossing access into two chunks, and call the physical `RiscvEmulatorLoad()` or `RiscvEmulatorStore()`. The effective privilege is `mstatus.MPP` for loads and stores when `mstatus.MPRV=1` and the privilege is M-mode; instruction fetches always use the real privilege. The walker implements Sv32 with 4 KiB pages and 4 MiB megapages, the permission checks, Svade and page faults. The board has no SBI layer. The CLINT sets `mip.MTIP`; the PLIC sets `mip.MEIP`.
 
-The ISA-combination generator emits three Sv32 environments: `RV32IZicntr_Zicsr_Sv32` (minimal), `RV32IMAZicntr_Zicsr_Zifencei_Sv32` (Linux set) and `RV32IMACBZicntr_Zicsr_Zifencei_Sv32` (maximal set). The ACT generator maps the `Sv32` subset to the `U`, `S`, `Sv32`, `Svade` and `Sstvala` UDB extensions, enables the S-mode parameters and the Sstvala reporting parameters, turns on the privileged tests, defines `STANDARD_SM_SUPPORTED` so the framework emits the M-mode trap setup and the interrupt entry points, and defines the CLINT timer addresses so the interrupt tests link. The sail reference config delegates every standard exception, including instruction address misaligned, so the U-mode exception tests run. The container image raises `TRAP_SIGUPD_COUNT` in `tests/priv/ExceptionsSvZaamo/sv32_exceptions_Zaamo_Umode.S` to 270; the upstream value of 110 overflows the trap signature region in the sail reference model. The interrupt tests fail at run time until M3 adds the SBI layer and the S-mode interrupt sources.
+The ISA-combination generator emits three Sv32 environments: `RV32IZicntr_Zicsr_Sv32` (minimal), `RV32IMAZicntr_Zicsr_Zifencei_Sv32` (Linux set) and `RV32IMACBZicntr_Zicsr_Zifencei_Sv32` (maximal set). The ACT generator maps the `Sv32` subset to the `U`, `S`, `Sv32`, `Svade` and `Sstvala` UDB extensions, enables the S-mode parameters and the Sstvala reporting parameters, turns on the privileged tests, defines `STANDARD_SM_SUPPORTED` so the framework emits the M-mode trap setup and the interrupt entry points, and defines the CLINT timer addresses so the interrupt tests link. The sail reference config delegates every standard exception, including instruction address misaligned, so the U-mode exception tests run. The container image pins ACT `act4` commit `1c3e9f2a`, which sizes the trap signature region per test chunk: the default is 0, the privileged generator reserves 1500 entries, and assembly tests link with a 128-byte stack. The container applies one temporary patch: the trap handler always uses the instruction-width detection in `tests/env/rvtest_trap_handler.h`. The Sv32 environments exclude the U-mode tests that trap-loop under the boot identity map and `Sv_sv32_satp_access_Smode` through `# act-exclude-extensions` in the `.ini`.
+
+The three Sv32 environments build every ELF. The minimal environment runs 119 pass and 38 fail, the Linux set 143 pass and 48 fail, and the maximal set 202 pass and 49 fail. The `I` suite passes 39 of 39 in all three. The remaining failures are the `InterruptsS`/`InterruptsSm` group (the SBI layer and the S-mode interrupt sources are M3 work), the `Sm` shadow-stack group, the `Sv_Exceptions` group in the Linux and maximal sets, and the `S_scsr_ro-00` cycle-counter test. The `Sv_Exceptions` tests reach their failure-message path, which writes to the physical console address `0x10000000`; under Sv32 that address is unmapped, so the write faults and masks the first unexpected trap.
+
+The `core.yaml` template no longer carries the `S`/`Zicsr`-dependent parameters (`MEDELEG_DELEGATABLE`, `MIDELEG_DELEGATABLE`, the `*_INTR_IMPL` flags). `gen_core.py` emits the M-level interrupt flags when the config has `Zicsr` and the delegation arrays plus the S-level interrupt flags when it has `Sv32`. `rv32i`, `rv32izicsr` and `rv32izicntr_zicsr_sv32` all validate and build the `I` suite.
 
 The DTS uses `mmu-type = "riscv,none"` and M-mode interrupt causes 3, 7 and 11. The Linux image uses `CONFIG_RISCV_M_MODE=y`, `# CONFIG_MMU is not set` and uClibc-ng.
+
+The linker script places `.text.rvmodel` directly after `.text.rvtest`, before `.rodata` and `.data`, so the `R_RISCV_JAL` call to `rvtest_clr_sext_int` stays in range when the signature grows.
 
 ## Linux constraints
 
@@ -59,7 +65,7 @@ The kernel entry expects S-mode with `a0` set to the hart ID, `a1` set to the DT
 
 | #   | Decision                                                                                                                                                           | Rationale                                                                                              |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
-| 1   | Real Linux kernel with the minimal Sv32 set: 4 KiB pages, two-level walk, S-mode and U-mode, SBI; no TLB, superpages, ASID, MPRV or PMP                            | Linux supports no lighter MMU than Sv32; the gain comes from leaving out optional features             |
+| 1   | Real Linux kernel with the minimal Sv32 set: 4 KiB pages and 4 MiB megapages, two-level walk, S-mode and U-mode, SBI, MPRV; no TLB, ASID or PMP                     | Linux supports no lighter MMU than Sv32; the ACT Sv32 tests map code and data with megapages and use MPRV |
 | 2   | Emulator-hosted SBI: the emulator handles `ECALL` from S-mode with a direct C call in the decode                                                                   | Smallest code, no second binary, no cross-build and no M-mode trap path; the emulator owns the devices |
 | 3   | Core-level `RiscvEmulatorTranslate(state, va, access)` ahead of every fetch, load and store; the board keeps physical `RiscvEmulatorLoad` and `RiscvEmulatorStore` | One translation path, a testable MMU and a board that stays physical                                   |
 | 4   | S-mode PLIC and CLINT with `mideleg` bits 1, 5 and 9, and `mip.SEIP` and `mip.STIP`                                                                                | One trap path and one `stvec` handler, which matches the S-mode MMU                                    |
@@ -71,6 +77,24 @@ The kernel entry expects S-mode with `a0` set to the hart ID, `a1` set to the DT
 | 10  | `static inline` virtual load/store wrappers plus a fetch wrapper; call sites change one function name                                                              | One source copy of page-crossing and fault logic; the compiler chooses inlining; no `noinline`         |
 | 11  | A page-crossing access is split into two chunks at the page boundary                                                                                               | Correct, at most two translations, lowest AVR cost                                                     |
 | 12  | `stval` holds the faulting virtual address, also for a PTE access fault                                                                                            | The manual requires it (Sstvala)                                                                       |
+| 13  | One level loop that treats any level as a leaf; the physical address mask depends on the level                                                                     | The manual defines megapages; one path removes the level-0 special case                                |
+| 14  | `gen_core.py` sets `fs_legal_states` and `vs_legal_states` to `ExtContext_Off` when F and V are absent                                                              | The reference config must not declare features the DUT does not have                                   |
+| 15  | ACT `act4` commit `1c3e9f2a` with the per-chunk trap signature counts and one temporary trap-handler-width patch                                                    | A global `TRAP_SIGUPD_COUNT` cannot serve both the small interrupt tests and the large medeleg walk; upstream #2505 sizes the region per test chunk                    |
+| 16  | Exclude the U-mode tests that trap-loop under the boot identity map and `Sv_sv32_satp_access_Smode` through `# act-exclude-extensions` in the Sv32 envs | The boot identity map is not user accessible; tests that run U-mode code without `begin_sv_test` trap-loop in the reference model. The container applies only the trap-handler patch |
+| 17  | Move `.text.rvmodel` directly after `.text.rvtest` in `link.ld`, before `.rodata` and `.data`                                                                       | The signature in `.data` pushes `.text.rvmodel` beyond the `R_RISCV_JAL` range for `InterruptsS-00`; the reorder keeps the call in range without an ACT source patch   |
+| 18  | `senvcfg` is a read/write CSR with only FIOM writable; `sepc`/`mepc` clear the low bits per IALIGN                                                                  | The manual makes FIOM writable when `satp.MODE` is not read-only zero and the unimplemented extension fields read-only zero; with IALIGN=32 the two low bits of `sepc`/`mepc` are always zero |
+
+## The U-mode exclusion
+
+The boot identity map is not user accessible. Tests that run U-mode code without `begin_sv_test` trap-loop in the reference model. The Sv32 environments exclude these tests through `# act-exclude-extensions` in the `.ini`:
+
+- `Exceptions` (the whole suite)
+- `Sstvala_s` and `Sstvala_u`
+- `U` (the whole suite)
+- `S_Zicntr`
+- `Sv_sv32_satp_access_Smode`
+
+`Sv_sv32_satp_access_Smode` is excluded because `_t_satp_access` uses `begin_test_chunk` and does not map the U-mode alias. The container applies only the trap-handler patch. The trap-handler patch stays because it fixes a framework bug that affects tests outside the excluded suites.
 
 ## Alternatives considered
 
@@ -108,13 +132,13 @@ The S-mode CSRs are:
 | `scause`     | 0x142   | Interrupt bit 31 and cause code                                               |
 | `stval`      | 0x143   | Fault address or instruction                                                  |
 | `sip`        | 0x144   | View on `mip`, masked by `mideleg`                                            |
-| `satp`       | 0x180   | MODE bit 31, ASID bits 30:22 read as zero, PPN bits 21:0                      |
+| `satp`       | 0x180   | MODE bit 31 (WARL: Bare and Sv32), ASID bits 30:22, PPN bits 21:0             |
 
 `mcounteren` is set to 0x7 at boot so S-mode can read `cycle`, `time` and `instret`. `scounteren` is a separate CSR with a `0x7` write mask that controls U-mode counter access.
 
 `SRET` restores `SIE` from `SPIE`, sets `SPIE`, clears `SPP`, sets the privilege from `SPP` and jumps to `sepc`. `SRET` raises an illegal-instruction exception when the active privilege is below S-mode, or when `mstatus.TSR` is set and the active privilege is S-mode.
 
-`SFENCE.VMA` is decoded and treated as a no-op because the implementation has no address-translation cache. It raises an illegal-instruction exception when `mstatus.TVM` is set and the active privilege is S-mode.
+`SFENCE.VMA` is decoded and treated as a no-op because the implementation has no address-translation cache. It raises an illegal-instruction exception when `mstatus.TVM` is set and the active privilege is S-mode. `satp` raises the same exception under the same condition.
 
 `WFI` in S-mode raises an illegal-instruction exception when `mstatus.TW` is set.
 
@@ -122,13 +146,13 @@ The S-mode CSRs are:
 
 ### Sv32 translation
 
-`satp.MODE` selects Bare (0) or Sv32 (1). `satp.PPN` holds the root page table. `satp.ASID` reads as zero.
+`satp.MODE` selects Bare (0) or Sv32 (1). `satp.PPN` holds the root page table. `satp.ASID` is stored but has no effect because the walker has no address-translation cache.
 
-A virtual address splits into VPN[1] at bits 31:22, VPN[0] at bits 21:12 and the page offset at bits 11:0. The walk starts at `satp.PPN << 12` and reads a 4-byte PTE at `root + VPN[1] * 4`. A non-leaf PTE points to the next table. A leaf PTE at level 0 maps a 4 KiB page. A leaf PTE at level 1 is a 4 MiB superpage and raises a page fault because the implementation does not support superpages.
+A virtual address splits into VPN[1] at bits 31:22, VPN[0] at bits 21:12 and the page offset at bits 11:0. The walk starts at `satp.PPN << 12` and reads a 4-byte PTE at `root + VPN[1] * 4`. A non-leaf PTE points to the next table. A leaf PTE at level 0 maps a 4 KiB page. A leaf PTE at level 1 maps a 4 MiB megapage. The physical address is `(PPN << 12) | (VA & ((1 << (12 + 10 * level)) - 1))`. A level-1 leaf with a non-zero PPN[0] is a misaligned megapage and raises a page fault (`supervisor.adoc`, `sv32algorithm` step 5).
 
-The PTE bits are V (0), R (1), W (2), X (3), U (4), G (5), A (6), D (7), RSW (8:9) and PPN (31:10). A PTE with V=0, or with R=0 and W=1, raises a page fault. A leaf PTE with W=1 and R=0 is reserved and raises a page fault.
+The PTE bits are V (0), R (1), W (2), X (3), U (4), G (5), A (6), D (7), RSW (8:9) and PPN (31:10). A PTE with V=0, or with R=0 and W=1, raises a page fault. A leaf PTE with W=1 and R=0 is reserved and raises a page fault. A non-leaf PTE with D, A or U set raises a page fault (`supervisor.adoc`, `sv32algorithm` step 3).
 
-Permission checks:
+Permission checks use the effective privilege. The effective privilege is `mstatus.MPP` for loads and stores when `mstatus.MPRV=1` and the privilege is M-mode; instruction fetches always use the real privilege.
 
 - Fetch requires X=1.
 - Load requires R=1, or X=1 when `mstatus.MXR` is set.
@@ -171,7 +195,9 @@ The interrupt priority is MEI, MSI, MTI, SEI, SSI, STI. A delegated interrupt en
 
 ### Boot
 
-The emulator starts the hart in S-mode at `0x80000000` with `a0` set to the hart ID, `a1` set to the DTB address, `satp` set to Bare, `mcounteren` set to 0x7, and `medeleg` and `mideleg` set to the delegated bits. `mie` and `mip` start at zero.
+The RISC-V manual requires M-mode at reset (`machine.adoc`, `m_mode_priv_at_reset`). The emulator starts the hart in M-mode at `0x80000000`. The ACT tests run in M-mode and the framework's `RVTEST_BOOT_TO_MMODE` sets up the M-mode CSRs and trap handlers.
+
+Linux with `CONFIG_MMU=y` must run in S-mode because `satp` is an S-mode CSR and is active only in S-mode or U-mode (`supervisor.adoc`). M-mode has no address translation. The no-MMU image uses `CONFIG_RISCV_M_MODE=y` and runs in M-mode. The MMU image needs an SBI and an M-mode firmware that switches to S-mode. The SBI and the firmware stub are not implemented now; the ACT tests are the current work.
 
 The DTB describes the CPU with `mmu-type = "riscv,sv32"`. The CLINT uses S-mode interrupt causes 1 and 5. The PLIC uses S-mode interrupt cause 9. The memory node keeps 64 MiB at `0x80000000`.
 
@@ -192,32 +218,7 @@ The image keeps the existing kernel version, the ext4 disk root and the virtio d
 
 ## Milestones
 
-The work is split into four coarse milestones. Each milestone delivers a working slice and has its own validation. The order is M1, M2, M3, M4.
-
-### M1: S-mode privilege and trap plumbing
-
-Deliverable: the emulator boots in S-mode, the S-mode CSRs are readable and writable, `SRET` and `SFENCE.VMA` work, a delegated trap enters `stvec`, and `WFI` honors `mstatus.TW`.
-
-- Add `RVE_E_SV32` to `RiscvEmulator/include/RiscvEmulatorConfig.h`. Sv32 implies Zicsr.
-- Add the S-mode CSR storage to `RiscvEmulator/include/RiscvEmulatorTypeCSR.h`: `stvec`, `sscratch`, `sepc`, `scause`, `stval` and `scounteren` (a separate 32-bit value with a `0x7` write mask). Reuse `mstatus` for `sstatus`, and `mie` and `mip` for `sie` and `sip`.
-- Add the write masks for `mstatus` S-mode bits, `medeleg`, `mideleg`, `satp`, `mie` S-mode bits and `mip.SSIP` to `RiscvEmulator/include/RiscvEmulatorTypeCSR.h`.
-- Add the S-mode CSR cases to `RiscvEmulatorGetCSRAddress()` in `RiscvEmulator/include/RiscvEmulatorExtensionZicsr.h`.
-- Add `SRET`, `SFENCE.VMA` and the `mstatus.TW` check to `RiscvEmulatorOpcodeSystem()` and `RiscvEmulatorWFI()` in `RiscvEmulator/include/RiscvEmulatorExtensionI.h`.
-- Add `RiscvEmulatorTrapEnterSupervisor()` and the delegation choice to `RiscvEmulator/include/RiscvEmulatorTrap.h`.
-- Add the S-mode CSR names and the `sret` and `sfence.vma` disassembly to `RiscvEmulatorDebug.h` and `RiscvEmulatorDisasm.h`.
-- Set the S-mode boot state in `RiscvEmulator-Native/src/main.c`.
-
-Validation: the ACT S-mode coverpoints.
-
-### M2: Sv32 translation
-
-Deliverable: every fetch, load and store goes through `RiscvEmulatorLoadVirtual()` or `RiscvEmulatorStoreVirtual()`; the walker handles valid and invalid PTEs, permissions, Svade, page faults and page-crossing accesses.
-
-- Add `RiscvEmulator/include/RiscvEmulatorExtensionSv32.h` with the walker, the permission checks, the Svade check, the fault raising and the virtual load/store wrappers.
-- Route the fetch in `RiscvEmulator.h` and the loads and stores in `RiscvEmulatorExtensionI.h`, `RiscvEmulatorExtensionC.h`, `RiscvEmulatorExtensionZcb.h` and `RiscvEmulatorExtensionA.h` through the wrappers.
-- Add the three Sv32 environments to `generate-isa-extension-combination.py` and the `Sv32` subset to the ACT `gen_core.py`.
-
-Validation: the ACT Svade and Sstvala coverpoints on the three Sv32 environments.
+M1 (S-mode privilege and trap plumbing) and M2 (Sv32 translation) are done. M3 and M4 remain.
 
 ### M3: SBI and S-mode devices
 
@@ -251,6 +252,14 @@ Validation: Linux boot, login prompt, console and trap trace.
 - A trap trace with `-t` to confirm that page faults and S-mode interrupts arrive at `stvec`.
 
 The ACT coverpoints cover the ISA; the Linux boot is the integration test.
+
+## Open items
+
+1. `Sv_Exceptions` (10 tests, Linux and maximal sets): find the first unexpected trap. The visible symptom is the failure-message path writing to the physical console address `0x10000000`, which is unmapped under Sv32, so the write faults and masks the real failure. Make that path translation-safe.
+2. Counter group: `S_scsr_ro-00` reads the cycle counter before and after a write and expects the same value, but the counter increments.
+3. `Sm` group: the shadow-stack (`Zicfiss`) and the M-mode CSR tests.
+4. M3: the SBI layer and the S-mode interrupt sources (`InterruptsS`/`InterruptsSm`).
+5. Run the Svade and Sstvala coverages on the three Sv32 environments.
 
 ## References
 

@@ -81,7 +81,17 @@ SUBSET = {
     "Zmmul": {"define": ["-D RVE_E_ZMMUL=1"]},
     "Zicsr": {"define": ["-D RVE_E_ZICSR=1"]},
     "Zifencei": {"define": ["-D RVE_E_ZIFENCEI=1"]},
-    "Sv32": {"define": ["-D RVE_E_SV32=1", "-D RVE_E_ZICSR=1"]},
+    "Sv32": {
+        "define": ["-D RVE_E_SV32=1", "-D RVE_E_ZICSR=1"],
+        # The boot identity map is not user accessible, so tests that run U-mode
+        # code without begin_sv_test trap-loop in the reference model. The
+        # satp-access test needs the reverted Sv.py patch. Both groups are
+        # excluded from the Sv32 environments until the generators are fixed.
+        "act": [
+            "act-exclude-extensions: Exceptions,Sstvala_s,Sstvala_u,U,S_Zicntr,Sv_sv32_satp_access_Smode",
+            "act-note: The U-mode tests trap-loop under the Sv32 boot identity map, which is not user accessible. Sv_sv32_satp_access_Smode needs the reverted satp-access patch.",
+        ],
+    },
     "Zba": {"define": ["-D RVE_E_ZBA=1"]},
     "Zbb": {"define": ["-D RVE_E_ZBB=1"]},
     "Zbc": {
@@ -113,9 +123,9 @@ SUBSET = {
 # Sv32 is not part of the covering array. The ACT wrapper needs exactly these
 # three variants: the minimal set, the Linux set and the maximal set.
 PINNED = [
-    ("Zicsr", "Sv32"),
-    ("M", "A", "Zicsr", "Zifencei", "Sv32"),
-    ("M", "A", "C", "B", "Zicsr", "Zifencei", "Sv32"),
+    ("Zicntr", "Zicsr", "Sv32"),
+    ("M", "A", "Zicntr", "Zicsr", "Zifencei", "Sv32"),
+    ("M", "A", "C", "B", "Zicntr", "Zicsr", "Zifencei", "Sv32"),
 ]
 PINNED_ONLY = {"Sv32"}
 

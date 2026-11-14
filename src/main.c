@@ -555,14 +555,6 @@ int main(int argc, char *argv[]) {
     RiscvEmulatorState.reg.a0 = 0;
     RiscvEmulatorState.reg.a1 = dtb_address;
 
-#if (RVE_E_SV32 == 1)
-    // The MMU image boots in S-mode with the SBI state prepared.
-    RiscvEmulatorState.privilege = 1;
-    RiscvEmulatorState.csr.mcounteren = 0x7;
-    RiscvEmulatorState.csr.medeleg.synchronousexceptions = 0xB1FF;
-    RiscvEmulatorState.csr.mideleg.interrupts = 0x222;
-#endif
-
     // RiscvEmulatorInit sets the PC to ROM_ORIGIN (0x20000000). ACT4 places
     // all code and data in RAM at RAM_ORIGIN (0x80000000), so override the PC
     // after init. Without this the emulator boots at the HALT region and crashes.
