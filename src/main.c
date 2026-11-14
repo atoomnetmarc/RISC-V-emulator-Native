@@ -111,10 +111,16 @@ static uint32_t csr_raw(const void *csr) {
 static const char *trap_cause_name(uint32_t code, uint8_t interrupt) {
     if (interrupt != 0) {
         switch (code) {
+            case 1:
+                return "supervisor software interrupt";
             case 3:
                 return "machine software interrupt";
+            case 5:
+                return "supervisor timer interrupt";
             case 7:
                 return "machine timer interrupt";
+            case 9:
+                return "supervisor external interrupt";
             case 11:
                 return "machine external interrupt";
             default:
@@ -159,6 +165,22 @@ static const char *trap_cause_name(uint32_t code, uint8_t interrupt) {
 // Print the machine CSRs and the key registers at a trap.
 static void print_trap(const RiscvEmulatorState_t *state) {
 #if (RVE_E_ZICSR == 1)
+#if (RVE_E_SV32 == 1)
+    if (state->privilege == 1) {
+        uint32_t scause = csr_raw(&state->csr.scause);
+        uint32_t stvec = ((uint32_t)state->csr.stvec.base << 2) | state->csr.stvec.mode;
+        printf("trap %zu: scause=0x%08X (%s) sepc=0x%08X stval=0x%08X sstatus=0x%08X sscratch=0x%08X stvec=0x%08X\n",
+               trap_count, scause,
+               trap_cause_name(state->csr.scause.exceptioncode, state->csr.scause.interrupt),
+               state->csr.sepc, state->csr.stval,
+               csr_raw(&state->csr.mstatus) & RVE_CSR_SSTATUS_READ_MASK,
+               state->csr.sscratch, stvec);
+        printf("  pc=0x%08X instruction=0x%08X ra=0x%08X sp=0x%08X gp=0x%08X tp=0x%08X\n",
+               state->programcounter, state->instruction.value, state->reg.ra,
+               state->reg.sp, state->reg.gp, state->reg.tp);
+        return;
+    }
+#endif
     uint32_t mcause = csr_raw(&state->csr.mcause);
     uint32_t mtvec = ((uint32_t)state->csr.mtvec.base << 2) | state->csr.mtvec.mode;
     printf("trap %zu: mcause=0x%08X (%s) mepc=0x%08X mtval=0x%08X mstatus=0x%08X mscratch=0x%08X mtvec=0x%08X\n",
@@ -532,6 +554,14 @@ int main(int argc, char *argv[]) {
     // Linux expects the hart ID in a0 and the DTB physical address in a1.
     RiscvEmulatorState.reg.a0 = 0;
     RiscvEmulatorState.reg.a1 = dtb_address;
+
+#if (RVE_E_SV32 == 1)
+    // The MMU image boots in S-mode with the SBI state prepared.
+    RiscvEmulatorState.privilege = 1;
+    RiscvEmulatorState.csr.mcounteren = 0x7;
+    RiscvEmulatorState.csr.medeleg.synchronousexceptions = 0xB1FF;
+    RiscvEmulatorState.csr.mideleg.interrupts = 0x222;
+#endif
 
     // RiscvEmulatorInit sets the PC to ROM_ORIGIN (0x20000000). ACT4 places
     // all code and data in RAM at RAM_ORIGIN (0x80000000), so override the PC

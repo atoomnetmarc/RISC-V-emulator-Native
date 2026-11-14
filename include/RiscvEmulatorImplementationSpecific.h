@@ -89,7 +89,11 @@ static inline void RiscvEmulatorIllegalInstruction(RiscvEmulatorState_t *state _
 
     // When there is no trap handler, stop the emulation.
 #if (RVE_E_ZICSR == 1)
-    if (state->csr.mtvec.base == 0)
+    if (state->csr.mtvec.base == 0
+#if (RVE_E_SV32 == 1)
+        && state->csr.stvec.base == 0
+#endif
+    )
 #endif
     {
         printf("There is no trap handler. Stop emulating.\n");
@@ -105,7 +109,11 @@ static inline void RiscvEmulatorIllegalInstruction(RiscvEmulatorState_t *state _
  */
 static inline void RiscvEmulatorHandleECALL(RiscvEmulatorState_t *state) {
 #if (RVE_E_ZICSR == 1)
-    if (state->csr.mtvec.base != 0) {
+    if (state->csr.mtvec.base != 0
+#if (RVE_E_SV32 == 1)
+        || state->csr.stvec.base != 0
+#endif
+    ) {
         return;
     }
 #endif
