@@ -2,30 +2,34 @@
 
 ## Context
 
-M1 (S-mode privilege and trap plumbing) and M2 (Sv32 translation) are done.
-M3 (SBI and S-mode devices) and M4 (Linux image and boot) remain. The design
-facts and decisions live in [`mmu-sv32.md`](mmu-sv32.md); this file is the
-next-step note.
+M1 (S-mode privilege and trap plumbing), M2 (Sv32 translation) and M3 (S-mode devices) are done. M4 (Linux image and boot) remains. The design facts and decisions live in [`mmu-sv32.md`](mmu-sv32.md); this file is the next-step note.
 
 ## Current results
 
 | Environment | Pass | Fail |
 | --- | --- | --- |
-| `rv32izicntr_zicsr_sv32` (minimal) | 127 | 30 |
-| `rv32imazicntr_zicsr_zifencei_sv32` (Linux set) | 161 | 30 |
-| `rv32imacbzicntr_zicsr_zifencei_sv32` (maximal) | 220 | 31 |
+| `rv32izicntr_zicsr_sv32` (minimal) | 157 | 0 |
+| `rv32imazicntr_zicsr_zifencei_sv32` (Linux set) | not rerun | not rerun |
+| `rv32imacbzicntr_zicsr_zifencei_sv32` (maximal) | not rerun | not rerun |
 
-The `I` suite is 39/39 in all three. The `S` suite is 8/8. The
-`Sv_Exceptions` group passes in the A-enabled sets. The `Sm` group passes
-except `Sm_Zicntr-00`, `Sm_mcsr_cntr-00` and `Sm_xret-00`.
+The `I` suite is 39/39 in all three. The `S` suite is 8/8. The `Sv_Exceptions` group passes in the A-enabled sets. The `Sm` group passes in all three. The `InterruptsS` and `InterruptsSm` groups pass.
 
-## Next step: M3
+## M3 result
 
-The remaining failures are the `InterruptsS`/`InterruptsSm` group and three `Sm` tests that depend on M3:
+The `InterruptsSm` group exercises interrupt arbitration. The trap signature word 0 vector field is derived from the per-cause stub address, so vector 23 is cause 9 (SEI) and vector 25 or 18 is cause 11 (MEI) or cause 5 (STI).
 
-- `Sm_xret-00` uses `RVTEST_TSBI_GOTO_SMODE`, which needs the SBI to enter S-mode.
-- `Sm_mcsr_cntr-00` writes the memory-mapped `mtime` and reads the `time` CSR, which needs the CLINT.
-- `Sm_Zicntr-00` counts the instructions in the ecall path; the emulator counts one more than the reference.
+Two rules from the privileged manual govern the selection:
+
+- A delegated interrupt traps to S-mode only when the active privilege is S-mode with `sstatus.SIE` set, or when the active privilege is less than S-mode. It never traps to M-mode (`supervisor.adoc:383`).
+- Interrupts to M-mode take priority over interrupts to S-mode (`machine.adoc:1357`, `supervisor.adoc:396`).
+
+`RiscvEmulatorLoop()` checks the non-delegated interrupts first, then the delegated ones, and uses the raw `mideleg` bit for the target mode. The minimal environment passes 157 of 157.
+
+M3 also has the PLIC M-mode and S-mode contexts, the split `mip.SEIP` software bit and platform signal, and the custom platform CSR pair `0x8C0`/`0x8C1`. The ACT `RVMODEL_SET_SEXT_INT`, `RVMODEL_CLR_SEXT_INT`, `RVMODEL_SET_SEXT_INT_M`, `RVMODEL_CLR_SEXT_INT_M` and `RVMODEL_SET_SSW_INT` macros are injected through `# act-define` in the `.ini` generator. The board has a simple interrupt generator at 0x0C400000. `run-matrix.py` compiles 468 of 468, including the three Sv32 variants.
+
+## Next step: M4
+
+M4 is the Linux image and boot. The deliverables and file list are in [`mmu-sv32.md`](mmu-sv32.md).
 
 ## After that
 
@@ -37,9 +41,7 @@ The remaining failures are the `InterruptsS`/`InterruptsSm` group and three `Sm`
 - Use the `/grill-me` skill for design decisions.
 - Update `plans/mmu-sv32.md` when the code changes.
 - No historic references in comments or docs.
-- Exclude U-mode tests that trap-loop under the boot identity map; do not raise
-  `trap_sigupd_count` for the trap loop.
+- Exclude U-mode tests that trap-loop under the boot identity map; do not raise `trap_sigupd_count` for the trap loop.
 - Keep the container patch for the misaligned fetch.
 - Keep `.text.rvmodel` directly after `.text.rvtest` in `link.ld`.
-- Implement `senvcfg` with FIOM writable and the unimplemented extension fields
-  read-only zero.
+- Implement `senvcfg` with FIOM writable and the unimplemented extension fields read-only zero.

@@ -37,9 +37,13 @@ Fetch and data accesses go through `RiscvEmulatorLoadVirtual()` and `RiscvEmulat
 
 The ISA-combination generator emits three Sv32 environments: `RV32IZicntr_Zicsr_Sv32` (minimal), `RV32IMAZicntr_Zicsr_Zifencei_Sv32` (Linux set) and `RV32IMACBZicntr_Zicsr_Zifencei_Sv32` (maximal set). The ACT generator maps the `Sv32` subset to the `U`, `S`, `Sv32`, `Svade` and `Sstvala` UDB extensions, enables the S-mode parameters and the Sstvala reporting parameters, turns on the privileged tests, defines `STANDARD_SM_SUPPORTED` so the framework emits the M-mode trap setup and the interrupt entry points, and defines the CLINT timer addresses so the interrupt tests link. The sail reference config delegates every standard exception, including instruction address misaligned, so the U-mode exception tests run. The container image pins ACT `act4` commit `1c3e9f2a`, which sizes the trap signature region per test chunk: the default is 0, the privileged generator reserves 1500 entries, and assembly tests link with a 128-byte stack. The container applies one temporary patch: the trap handler always uses the instruction-width detection in `tests/env/rvtest_trap_handler.h`. The Sv32 environments exclude the U-mode tests that trap-loop under the boot identity map and `Sv_sv32_satp_access_Smode` through `# act-exclude-extensions` in the `.ini`.
 
-The three Sv32 environments build every ELF. The minimal environment runs 127 pass and 30 fail, the Linux set 161 pass and 30 fail, and the maximal set 220 pass and 31 fail. The `I` suite passes 39 of 39 in all three and the `S` suite passes 8 of 8. The remaining failures are the `InterruptsS`/`InterruptsSm` group (the SBI layer and the S-mode interrupt sources are M3 work) and three `Sm` tests that depend on M3: `Sm_xret-00` needs the SBI to enter S-mode, `Sm_mcsr_cntr-00` needs the CLINT `mtime`, and `Sm_Zicntr-00` counts the ecall path one instruction higher than the reference.
+The three Sv32 environments build every ELF. The minimal environment runs 157 pass and 0 fail. The `I` suite passes 39 of 39, the `S` suite passes 8 of 8, and the `InterruptsS` and `InterruptsSm` groups pass.
 
-The `core.yaml` template no longer carries the `S`/`Zicsr`-dependent parameters (`MEDELEG_DELEGATABLE`, `MIDELEG_DELEGATABLE`, the `*_INTR_IMPL` flags). `gen_core.py` emits the M-level interrupt flags when the config has `Zicsr` and the delegation arrays plus the S-level interrupt flags when it has `Sv32`. `rv32i`, `rv32izicsr` and `rv32izicntr_zicsr_sv32` all validate and build the `I` suite.
+M3 has the S-mode interrupt selection in `RiscvEmulatorLoop()`, the PLIC M-mode and S-mode contexts, and the split `mip.SEIP` software bit and platform signal. The ACT `RVMODEL_SET_SEXT_INT`, `RVMODEL_CLR_SEXT_INT`, `RVMODEL_SET_SEXT_INT_M`, `RVMODEL_CLR_SEXT_INT_M` and `RVMODEL_SET_SSW_INT` macros are injected through `# act-define` in the `.ini` generator and expand in all three Sv32 environments. The template `rvmodel_macros.h` defines `RVMODEL_SET_SSW_INT` as an empty macro, so the `.ini` override is required for the supervisor software interrupt. The ACT T-SBI runs in the framework's trap handler, not in the emulator.
+
+`gen_core.py` injects `RVMODEL_MSIP_ADDRESS` (0x02000000), `RVMODEL_MTIME_ADDRESS` (0x0200BFF8), `RVMODEL_MTIMECMP_ADDRESS` (0x02004000) and the `RVMODEL_SET_MEXT_INT`, `RVMODEL_CLR_MEXT_INT`, `RVMODEL_SET_MEXT_INT_M` and `RVMODEL_CLR_MEXT_INT_M` macros for the Sv32 environments. The `_M` variants serve the M-mode helpers, which do not use T-SBI. The board has a simple interrupt generator at 0x0C400000: a write with bit 31 set raises the low bits in `mip_platform`, a write without bit 31 clears them. The matrix compiles 468 of 468, including the three Sv32 variants, and `rv32i` passes 39 of 39. `run-matrix.py` regenerates the combinations file when the `.ini` or the generator changes, so a new environment reaches the matrix without a manual step.
+
+The `core.yaml` template carries only the parameters that every configuration defines. `gen_core.py` emits the M-level interrupt flags when the config has `Zicsr` and the delegation arrays plus the S-level interrupt flags when it has `Sv32`. `rv32i`, `rv32izicsr` and `rv32izicntr_zicsr_sv32` all validate and build the `I` suite.
 
 The DTS uses `mmu-type = "riscv,none"` and M-mode interrupt causes 3, 7 and 11. The Linux image uses `CONFIG_RISCV_M_MODE=y`, `# CONFIG_MMU is not set` and uClibc-ng.
 
@@ -96,6 +100,17 @@ The kernel entry expects S-mode with `a0` set to the hart ID, `a1` set to the DT
 | 29  | `menvcfg.FIOM` is writable; `marchid` reads 1; `mhpmcounter3` is writable                                                                                          | The generated reference config declares `archid = 1` and HPM counter 3 writable; `FIOM` is writable because `satp` is implemented |
 | 30  | `mret` and `sret` clear `mstatus.MPRV` when they return to a mode less privileged than M                                                                           | The manual requires it; the emulator kept MPRV set |
 | 31  | The RV32 upper-half CSRs `0x312`-`0x314` and `0x318`-`0x319` are read-only zero                                                                                    | The manual defines `medelegh`, `midelegh`, `mieh`, `mvienh` and `mviph`; the upper halves are zero on RV32 |
+| 32  | The CLINT `mtime` advances by the host-clock delta, so a software write survives the next tick                                                                     | The ACT `cp_mtime_write` test writes `mtime` and reads the `time` CSR; replacing `mtime` with the host clock would discard the write |
+| 33  | A write to `mcycle` or `minstret` is the final counter value; the writing instruction does not increment the counter                                                | The ACT `cp_minstret_wraparound` test expects the written value to be the final value |
+| 34  | A trapping instruction does not increment `minstret`                                                                                                                | The ACT `cp_instret_ecall` test expects the ecall not to count as a retired instruction |
+| 35  | WFI is finite: the hart resumes after one idle iteration, and `mstatus.TW` does not raise an illegal instruction                                                    | The generated config declares `WFI_FINITE`; the manual makes the TW trap conditional on the WFI not completing within the bounded time limit, and the ACT `cp_instret_wfi_timeout` test expects the WFI to return |
+| 36  | The `sstatus` write preserves every `mstatus` bit outside the sstatus write mask                                                                                    | The ACT `cp_sret_s` test writes `sstatus` and expects `mstatus.TSR` to stay set |
+| 37  | The `misa` C bit is read-only set                                                                                                                                    | The ACT `cp_misa_clear_c` test expects the C bit to stay set after a clear |
+| 38  | The interrupt selection checks the non-delegated interrupts before the delegated ones, then uses the priority MEI, MSI, MTI, SEI, SSI, STI within each group, and checks the target mode's global enable | The manual gives M-mode interrupts priority over S-mode interrupts; a delegated interrupt traps to S-mode only in S-mode with `sstatus.SIE` set or in a less-privileged mode, and never to M-mode |
+| 39  | The PLIC has an M-mode and an S-mode context                                                                                                                         | The S-mode external interrupt needs a context that the S-mode software can enable and claim |
+| 40  | `mip.SEIP` is split into a software-writable bit and a platform signal; a read returns the OR and a write only changes the software bit                              | The manual requires the split for the CSR read-modify-write sequence; `sip.SEIP` is read-only |
+| 41  | The ACT `RVMODEL_SET_SEXT_INT`, `RVMODEL_CLR_SEXT_INT` and `RVMODEL_SET_SSW_INT` macros are injected through `# act-define` in the `.ini` generator                     | The ACT template stays generic and the emulator `.ini` owns the platform macro |
+| 42  | MEI and SEI are raised through a custom platform CSR: `0x8C0` sets and `0x8C1` clears the software-set bits in `mip_platform_software`; MSI and MTI use the CLINT `MSIP` and `mtimecmp` registers | The manual makes `meip` platform-specific; a CSR works in every mode without T-SBI or the identity map, and the separate word keeps the device tick from overwriting the software-set bits |
 
 ## The U-mode exclusion
 
@@ -153,7 +168,7 @@ The S-mode CSRs are:
 
 `SFENCE.VMA` is decoded and treated as a no-op because the implementation has no address-translation cache. It raises an illegal-instruction exception when `mstatus.TVM` is set and the active privilege is S-mode. `satp` raises the same exception under the same condition.
 
-`WFI` in S-mode raises an illegal-instruction exception when `mstatus.TW` is set.
+`WFI` parks the hart for one idle iteration and then resumes, in every privilege mode. The implementation completes the wait within the bounded time limit, so `mstatus.TW` does not raise an illegal-instruction exception.
 
 `ECALL` from S-mode calls the SBI handler instead of raising a trap. `ECALL` from U-mode raises cause 8 and follows `medeleg`.
 
@@ -200,11 +215,13 @@ The handler implements:
 
 ### Interrupts
 
-`mip` and `mie` gain bits 1 (SSIP), 5 (STIP) and 9 (SEIP). `mip.SSIP` is writable by S-mode software. `mip.STIP` and `mip.SEIP` are read-only and are set by the CLINT and PLIC.
+`mip` and `mie` gain bits 1 (SSIP), 3 (MSIP), 5 (STIP), 7 (MTIP), 9 (SEIP) and 11 (MEIP). `mip.SSIP` is writable by S-mode software. `mip.STIP` and `mip.SEIP` are read-only and are set by the CLINT and PLIC. `mip.MSIP` is set by the CLINT `MSIP` register and `mip.MTIP` by the CLINT `mtimecmp` register. `mip.MEIP` is set by the platform interrupt controller.
+
+The platform interrupt controller is a custom CSR pair: `0x8C0` sets and `0x8C1` clears the software-set platform bits in `mip_platform_software`. The device tick writes the device-driven bits in `mip_platform`, so the two sources do not overwrite each other. A `mip` read and the interrupt selection use the OR of `mip`, `mip_platform` and `mip_platform_software`. The ACT macros use `csrw` to these CSRs, so the M-, S- and U-mode tests raise MEI and SEI without T-SBI or the identity map. The board also has a memory-mapped simple interrupt generator at 0x0C400000 for the same purpose.
 
 `mideleg` accepts bits 1, 5 and 9. `medeleg` accepts the S-mode exception bits: 0 to 8, 12, 13 and 15. Bit 9 (ECALL from S-mode) and bit 11 (ECALL from M-mode) are not delegated.
 
-The interrupt priority is MEI, MSI, MTI, SEI, SSI, STI. A delegated interrupt enters S-mode through `stvec`, `scause`, `sepc` and `sstatus`.
+The interrupt selection checks the non-delegated interrupts before the delegated ones, because interrupts to M-mode take priority over interrupts to S-mode. Within each group the priority is MEI, MSI, MTI, SEI, SSI, STI. A delegated interrupt enters S-mode through `stvec`, `scause`, `sepc` and `sstatus` only when the active privilege is S-mode with `sstatus.SIE` set or U-mode; it never enters M-mode.
 
 ### Boot
 
@@ -231,18 +248,20 @@ The image keeps the existing kernel version, the ext4 disk root and the virtio d
 
 ## Milestones
 
-M1 (S-mode privilege and trap plumbing) and M2 (Sv32 translation) are done. M3 and M4 remain.
+M1 (S-mode privilege and trap plumbing), M2 (Sv32 translation) and M3 (S-mode devices) are done. M4 remains.
 
-### M3: SBI and S-mode devices
+### M3: S-mode devices
 
-Deliverable: `ECALL` from S-mode calls the SBI handler; the CLINT and PLIC deliver S-mode timer and external interrupts; `mideleg` bits 1, 5 and 9 are active.
+Deliverable: the CLINT and PLIC deliver S-mode timer and external interrupts; `mideleg` bits 1, 5 and 9 are active; the ACT `InterruptsS`/`InterruptsSm` group passes.
 
-- Add the S-mode `ECALL` branch to `RiscvEmulatorOpcodeSystem()` and `RiscvEmulatorHandleSBI()` to `RiscvEmulator-Native/include/RiscvEmulatorImplementationSpecific.h`.
-- Add the S-mode interrupt choice to `RiscvEmulatorLoop()` in `RiscvEmulator/include/RiscvEmulator.h`.
-- Add the S-mode context to `RiscvEmulator-Devices/include/RiscvEmulatorDevicePlic.h` and set `mip.STIP` in `RiscvEmulator-Devices/include/RiscvEmulatorDeviceClint.h`.
-- Add the S-mode interrupt causes to `RiscvEmulator-Native/configs/linux.dts` and `linux-max.dts`.
-- Update `RiscvEmulator-Devices/docs/clint.md` and the PLIC context notes.
-- Extend `RiscvEmulator-Devices/test/test_plic/test_plic.c` and `test/test_clint/test_clint.c` with the S-mode context.
+- The S-mode interrupt choice is in `RiscvEmulatorLoop()` in `RiscvEmulator/include/RiscvEmulator.h`.
+- The S-mode context is in `RiscvEmulator-Devices/include/RiscvEmulatorDevicePlic.h` and the CLINT sets `mip.STIP` in `RiscvEmulator-Devices/include/RiscvEmulatorDeviceClint.h`.
+- The S-mode interrupt causes are in `RiscvEmulator-Native/configs/linux.dts` and `linux-max.dts`.
+- `RiscvEmulator-Devices/docs/clint.md` and the PLIC context notes describe the S-mode context.
+- `RiscvEmulator-Devices/test/test_plic/test_plic.c` and `test/test_clint/test_clint.c` cover the S-mode context.
+- The `.ini` overrides `RVMODEL_SET_SSW_INT` with the `mip.SSIP` T-SBI call in `platformio_isa-extension-combination_env.ini`.
+
+The emulator-hosted SBI handler is M4 work: `ECALL` from S-mode calls `RiscvEmulatorHandleSBI()` in `RiscvEmulator-Native/include/RiscvEmulatorImplementationSpecific.h`. The ACT tests use the framework's T-SBI trap handler, so the emulator SBI handler does not affect them.
 
 Validation: a trap trace with `-t`.
 
@@ -250,6 +269,7 @@ Validation: a trap trace with `-t`.
 
 Deliverable: the third Buildroot image boots to a login prompt with `make run-mmu`; the trap trace shows page faults and S-mode interrupts at `stvec`.
 
+- Add `RiscvEmulatorHandleSBI()` and the S-mode `ECALL` branch to `RiscvEmulator-Native/include/RiscvEmulatorImplementationSpecific.h`.
 - Add `rv32i-linux/configs/rv32i_mmu_defconfig` and `configs/kernel_config_mmu`.
 - Add `build-mmu`, `disk-mmu`, `run-mmu` and the MMU DTB target to `rv32i-linux/Makefile`.
 - Add an MMU environment to `RiscvEmulator-Native/platformio_linux_env.ini`.
@@ -268,8 +288,7 @@ The ACT coverpoints cover the ISA; the Linux boot is the integration test.
 
 ## Open items
 
-1. M3: the SBI layer and the S-mode interrupt sources (`InterruptsS`/`InterruptsSm`). The SBI also unblocks `Sm_xret-00`, the CLINT `mtime` unblocks `Sm_mcsr_cntr-00`, and the ecall instruction count unblocks `Sm_Zicntr-00`.
-2. Run the Svade and Sstvala coverages on the three Sv32 environments.
+1. Run the Svade and Sstvala coverages on the three Sv32 environments.
 
 ## References
 

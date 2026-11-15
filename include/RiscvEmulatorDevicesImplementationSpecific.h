@@ -110,6 +110,37 @@ static uart16550_t uart = {.base = UART_ORIGIN, .size = UART_SIZE};
 
 static plic_t plic = {.base = PLIC_ORIGIN, .size = PLIC_SIZE};
 
+// Simple interrupt generator. The ACT platform macros write a set/clear word
+// here to raise mip.MEIP. Bit 31 selects set; the low bits are the mip bits.
+#define SIG_ORIGIN 0x0C400000
+
+static uint32_t sig_pending;
+
+/**
+ * Writes the simple interrupt generator register.
+ *
+ * @param address The byte address in memory.
+ * @param source The source address to copy the data from.
+ * @param length The length in bytes of the data.
+ * @return true when the address is the generator register, false otherwise.
+ */
+static inline bool sig_write(uint32_t address, const void *source, uint8_t length) {
+    if (address != SIG_ORIGIN || length != sizeof(uint32_t)) {
+        return false;
+    }
+
+    uint32_t value;
+    memcpy(&value, source, sizeof(value));
+
+    if ((value & 0x80000000u) != 0) {
+        sig_pending |= value & 0x7FFFFFFFu;
+    } else {
+        sig_pending &= ~value;
+    }
+
+    return true;
+}
+
 // virtio-blk memory range.
 #define VIRTIO_BLK_ORIGIN 0x10001000
 #define VIRTIO_BLK_SIZE   0x1000
@@ -177,6 +208,10 @@ static inline bool RiscvDevicesLoad(uint32_t address, void *destination, uint8_t
  * @return true when the address is mapped, false otherwise.
  */
 static inline bool RiscvDevicesStore(uint32_t address, const void *source, uint8_t length) {
+    if (sig_write(address, source, length)) {
+        return true;
+    }
+
     if (clint_write(&clint, address, source, length)) {
         return true;
     }
@@ -223,22 +258,34 @@ static inline void RiscvDevicesTick(RiscvEmulatorState_t *state) {
 
 #if (RVE_E_ZICSR == 1)
     if (clint_timer_pending(&clint)) {
-        state->csr.mip.mip |= (1u << 7);
+        state->csr.mip_platform |= (1u << 7);
     } else {
-        state->csr.mip.mip &= ~(1u << 7);
+        state->csr.mip_platform &= ~(1u << 7);
     }
 
     if (clint_software_pending(&clint)) {
-        state->csr.mip.mip |= (1u << 3);
+        state->csr.mip_platform |= (1u << 3);
     } else {
-        state->csr.mip.mip &= ~(1u << 3);
+        state->csr.mip_platform &= ~(1u << 3);
     }
 
-    if (plic_irq_pending(&plic)) {
-        state->csr.mip.mip |= (1u << 11);
+    if (plic_irq_pending(&plic, 0)) {
+        state->csr.mip_platform |= (1u << 11);
     } else {
-        state->csr.mip.mip &= ~(1u << 11);
+        state->csr.mip_platform &= ~(1u << 11);
     }
+
+#if (RVE_E_SV32 == 1)
+    if (plic_irq_pending(&plic, 1)) {
+        state->csr.mip_platform |= (1u << 9);
+    } else {
+        state->csr.mip_platform &= ~(1u << 9);
+    }
+#endif
+
+    // The simple interrupt generator adds the platform bits that software
+    // raises through the ACT macros.
+    state->csr.mip_platform |= sig_pending;
 #else
     (void)state;
 #endif

@@ -90,6 +90,11 @@ SUBSET = {
         "act": [
             "act-exclude-extensions: Exceptions,Sstvala_s,Sstvala_u,U,S_Zicntr,Sv_sv32_satp_access_Smode",
             "act-note: The U-mode tests trap-loop under the Sv32 boot identity map, which is not user accessible. Sv_sv32_satp_access_Smode needs the reverted satp-access patch.",
+            "act-define: RVMODEL_SET_SEXT_INT(_R1, _R2) li a1, 512; csrw 0x8C0, a1",
+            "act-define: RVMODEL_CLR_SEXT_INT(_R1, _R2) li a1, 512; csrw 0x8C1, a1",
+            "act-define: RVMODEL_SET_SEXT_INT_M(_R1, _R2) li a1, 512; csrw 0x8C0, a1",
+            "act-define: RVMODEL_CLR_SEXT_INT_M(_R1, _R2) li a1, 512; csrw 0x8C1, a1",
+            "act-define: RVMODEL_SET_SSW_INT(_R1, _R2) li a1, 2; li a0, 0x3445a073; ecall",
         ],
     },
     "Zba": {"define": ["-D RVE_E_ZBA=1"]},
