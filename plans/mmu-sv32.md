@@ -47,6 +47,8 @@ The `core.yaml` template carries only the parameters that every configuration de
 
 The DTS uses `mmu-type = "riscv,none"` and M-mode interrupt causes 3, 7 and 11. The Linux image uses `CONFIG_RISCV_M_MODE=y`, `# CONFIG_MMU is not set` and uClibc-ng.
 
+The Linux emulator environments in `platformio_linux_env.ini` build `rv32ima_zicsr_zifencei` plus C and Zicntr. The prebuilt OpenSBI is compiled with C, and it reads `mcycle` and `minstret` for the S-mode counter emulation. F, D, Zcd and Zcf are not executed because the DTS does not advertise them.
+
 The linker script places `.text.rvmodel` directly after `.text.rvtest`, before `.rodata` and `.data`, so the `R_RISCV_JAL` call to `rvtest_clr_sext_int` stays in range when the signature grows.
 
 ## Linux constraints
@@ -99,7 +101,7 @@ The kernel entry expects S-mode with `a0` set to the hart ID, `a1` set to the DT
 | 28  | `mip.SSIP`, `mip.STIP` and `mip.SEIP` are writable; `sip.SSIP` is writable and `sip.STIP`/`sip.SEIP` are read-only                                                  | The manual makes the `mip` bits writable (no `stimecmp`) and the `sip` timer/external bits read-only |
 | 29  | `menvcfg.FIOM` is writable; `marchid` reads 1; `mhpmcounter3` is writable                                                                                          | The generated reference config declares `archid = 1` and HPM counter 3 writable; `FIOM` is writable because `satp` is implemented |
 | 30  | `mret` and `sret` clear `mstatus.MPRV` when they return to a mode less privileged than M                                                                           | The manual requires it; the emulator kept MPRV set |
-| 31  | The RV32 upper-half CSRs `0x312`-`0x314` and `0x318`-`0x319` are read-only zero                                                                                    | The manual defines `medelegh`, `midelegh`, `mieh`, `mvienh` and `mviph`; the upper halves are zero on RV32 |
+| 31  | The RV32 upper-half CSRs `0x312`-`0x314`, `0x318`-`0x319` and `0x31C`-`0x31F` are read-only zero                                                                   | The manual defines `medelegh`, `midelegh`, `mieh`, `mvienh`, `mviph` and `mstateen0h`-`mstateen3h`; the upper halves are zero on RV32 |
 | 32  | The CLINT `mtime` advances by the host-clock delta, so a software write survives the next tick                                                                     | The ACT `cp_mtime_write` test writes `mtime` and reads the `time` CSR; replacing `mtime` with the host clock would discard the write |
 | 33  | A write to `mcycle` or `minstret` is the final counter value; the writing instruction does not increment the counter                                                | The ACT `cp_minstret_wraparound` test expects the written value to be the final value |
 | 34  | A trapping instruction does not increment `minstret`                                                                                                                | The ACT `cp_instret_ecall` test expects the ecall not to count as a retired instruction |
