@@ -31,11 +31,20 @@ M3 also has the PLIC M-mode and S-mode contexts, the split `mip.SEIP` software b
 
 M4 is the Linux image and boot. The deliverables and file list are in [`mmu-sv32.md`](mmu-sv32.md).
 
+The chosen boot chain is OpenSBI -> U-Boot -> Linux. The emulator loads OpenSBI `fw_jump.bin` at `0x80000000` and U-Boot at `0x80200000`; U-Boot loads the Linux `Image` and the DTB from the disk. The emulator starts in M-mode.
+
 The prebuilt OpenSBI 1.9 for `ilp32/generic` boots in the emulator: load `fw_payload.bin` at `0x80000000` with `-b` and a DTB, and the banner prints and the test payload exits 0. The emulator needs the C and Zicntr extensions for that binary, and the RV32 upper-half `mstateen0h`-`mstateen3h` CSRs must be read-only zero.
+
+The MMU image builds: `buildroot/output-mmu/images/Image` and `rootfs.ext4` exist. The `RV32I-linux-mmu` and `RV32I-linux-mmu-max` emulator environments build.
+
+U-Boot `qemu-riscv32_smode` does not build yet: the host tools link against the system OpenSSL 3, which lacks the `ENGINE_*` symbols. Use the Buildroot host OpenSSL or disable the RSA host tools.
 
 ## After that
 
 1. Run the Svade and Sstvala coverages on the three Sv32 environments.
+2. Build U-Boot `qemu-riscv32_smode` and add the OpenSBI/U-Boot load addresses to the Makefile.
+3. Put the Linux `Image` and the DTB on the disk and add the U-Boot boot script.
+4. Update the `rv32i-linux/README.md` run commands for the OpenSBI/U-Boot chain.
 
 ## Rules
 

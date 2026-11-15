@@ -10,9 +10,9 @@ In scope:
 
 - S-mode and U-mode privilege.
 - Sv32 two-level page tables with 4 KiB pages.
-- Emulator-hosted SBI.
+- OpenSBI -> U-Boot -> Linux boot chain.
 - S-mode timer and external interrupts.
-- A third Buildroot image next to the existing no-MMU images.
+- Two MMU Buildroot images next to the existing no-MMU images.
 
 Out of scope:
 
@@ -33,7 +33,7 @@ The emulator core implements M-mode, S-mode and U-mode. `state->privilege` holds
 
 `SRET` and `SFENCE.VMA` are decoded. `ECALL` from S-mode raises cause 9. `mstatus.MPP` holds 0, 1 or 3; `SIE`, `SPIE`, `SPP`, `MPRV`, `SUM`, `MXR`, `TW`, `TSR` and `TVM` are writable.
 
-Fetch and data accesses go through `RiscvEmulatorLoadVirtual()` and `RiscvEmulatorStoreVirtual()`. The wrappers translate when `satp.MODE` is Sv32 and the effective privilege is S-mode or U-mode, split a page-crossing access into two chunks, and call the physical `RiscvEmulatorLoad()` or `RiscvEmulatorStore()`. The effective privilege is `mstatus.MPP` for loads and stores when `mstatus.MPRV=1` and the privilege is M-mode; instruction fetches always use the real privilege. The walker implements Sv32 with 4 KiB pages and 4 MiB megapages, the permission checks, Svade and page faults. The board has no SBI layer. The CLINT sets `mip.MTIP`; the PLIC sets `mip.MEIP`.
+Fetch and data accesses go through `RiscvEmulatorLoadVirtual()` and `RiscvEmulatorStoreVirtual()`. The wrappers translate when `satp.MODE` is Sv32 and the effective privilege is S-mode or U-mode, split a page-crossing access into two chunks, and call the physical `RiscvEmulatorLoad()` or `RiscvEmulatorStore()`. The effective privilege is `mstatus.MPP` for loads and stores when `mstatus.MPRV=1` and the privilege is M-mode; instruction fetches always use the real privilege. The walker implements Sv32 with 4 KiB pages and 4 MiB megapages, the permission checks, Svade and page faults. The emulator starts in M-mode for the OpenSBI chain. The CLINT sets `mip.MTIP`; the PLIC sets `mip.MEIP`.
 
 The ISA-combination generator emits three Sv32 environments: `RV32IZicntr_Zicsr_Sv32` (minimal), `RV32IMAZicntr_Zicsr_Zifencei_Sv32` (Linux set) and `RV32IMACBZicntr_Zicsr_Zifencei_Sv32` (maximal set). The ACT generator maps the `Sv32` subset to the `U`, `S`, `Sv32`, `Svade` and `Sstvala` UDB extensions, enables the S-mode parameters and the Sstvala reporting parameters, turns on the privileged tests, defines `STANDARD_SM_SUPPORTED` so the framework emits the M-mode trap setup and the interrupt entry points, and defines the CLINT timer addresses so the interrupt tests link. The sail reference config delegates every standard exception, including instruction address misaligned, so the U-mode exception tests run. The container image pins ACT `act4` commit `1c3e9f2a`, which sizes the trap signature region per test chunk: the default is 0, the privileged generator reserves 1500 entries, and assembly tests link with a 128-byte stack. The container applies one temporary patch: the trap handler always uses the instruction-width detection in `tests/env/rvtest_trap_handler.h`. The Sv32 environments exclude the U-mode tests that trap-loop under the boot identity map and `Sv_sv32_satp_access_Smode` through `# act-exclude-extensions` in the `.ini`.
 
@@ -47,7 +47,7 @@ The `core.yaml` template carries only the parameters that every configuration de
 
 The DTS uses `mmu-type = "riscv,none"` and M-mode interrupt causes 3, 7 and 11. The Linux image uses `CONFIG_RISCV_M_MODE=y`, `# CONFIG_MMU is not set` and uClibc-ng.
 
-The Linux emulator environments in `platformio_linux_env.ini` build `rv32ima_zicsr_zifencei` plus C and Zicntr. The prebuilt OpenSBI is compiled with C, and it reads `mcycle` and `minstret` for the S-mode counter emulation. F, D, Zcd and Zcf are not executed because the DTS does not advertise them.
+The Linux emulator environments in `platformio_linux_env.ini` build `rv32ima_zicsr_zifencei` plus C and Zicntr. The prebuilt OpenSBI is compiled with C, and it reads `mcycle` and `minstret` for the S-mode counter emulation. F, D, Zcd and Zcf are not executed because the DTS does not advertise them. The MMU environments add `RVE_E_SV32`. The emulator starts in M-mode and runs OpenSBI `fw_jump` at `0x80000000`; OpenSBI jumps to U-Boot at `0x80200000`.
 
 The linker script places `.text.rvmodel` directly after `.text.rvtest`, before `.rodata` and `.data`, so the `R_RISCV_JAL` call to `rvtest_clr_sext_int` stays in range when the signature grows.
 
@@ -72,10 +72,10 @@ The kernel entry expects S-mode with `a0` set to the hart ID, `a1` set to the DT
 | #   | Decision                                                                                                                                                           | Rationale                                                                                              |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
 | 1   | Real Linux kernel with the minimal Sv32 set: 4 KiB pages and 4 MiB megapages, two-level walk, S-mode and U-mode, SBI, MPRV; no TLB, ASID or PMP                     | Linux supports no lighter MMU than Sv32; the ACT Sv32 tests map code and data with megapages and use MPRV |
-| 2   | Emulator-hosted SBI: the emulator handles `ECALL` from S-mode with a direct C call in the decode                                                                   | Smallest code, no second binary, no cross-build and no M-mode trap path; the emulator owns the devices |
+| 2   | OpenSBI -> U-Boot -> Linux: the emulator loads OpenSBI `fw_jump` at `0x80000000` and U-Boot at `0x80200000`; U-Boot loads Linux from the disk                        | The realistic boot chain; OpenSBI provides the SBI and U-Boot loads the kernel from the disk |
 | 3   | Core-level `RiscvEmulatorTranslate(state, va, access)` ahead of every fetch, load and store; the board keeps physical `RiscvEmulatorLoad` and `RiscvEmulatorStore` | One translation path, a testable MMU and a board that stays physical                                   |
 | 4   | S-mode PLIC and CLINT with `mideleg` bits 1, 5 and 9, and `mip.SEIP` and `mip.STIP`                                                                                | One trap path and one `stvec` handler, which matches the S-mode MMU                                    |
-| 5   | A third image next to the existing min and max no-MMU images                                                                                                       | Keeps the no-MMU reference and follows the shared-base pattern                                         |
+| 5   | Two MMU images next to the existing min and max no-MMU images                                                                                                      | Keeps the no-MMU reference and follows the shared-base pattern                                         |
 | 6   | Svade: a page fault when A is clear, or when a store finds D clear                                                                                                 | The ACT Svade coverpoint is the only A/D behaviour the test framework can check; hardware update has no ACT coverpoint |
 | 7   | uClibc-ng for the MMU image                                                                                                                                        | Reuses the existing defconfig, patches and rootfs overlay; the smallest diff                           |
 | 8   | `scounteren` is a separate CSR with a `0x7` write mask                                                                                                             | The manual requires a separate CSR at `0x106`; only CY, TM and IR are implemented                      |
@@ -263,27 +263,25 @@ Deliverable: the CLINT and PLIC deliver S-mode timer and external interrupts; `m
 - `RiscvEmulator-Devices/test/test_plic/test_plic.c` and `test/test_clint/test_clint.c` cover the S-mode context.
 - The `.ini` overrides `RVMODEL_SET_SSW_INT` with the `mip.SSIP` T-SBI call in `platformio_isa-extension-combination_env.ini`.
 
-The emulator-hosted SBI handler is M4 work: `ECALL` from S-mode calls `RiscvEmulatorHandleSBI()` in `RiscvEmulator-Native/include/RiscvEmulatorImplementationSpecific.h`. The ACT tests use the framework's T-SBI trap handler, so the emulator SBI handler does not affect them.
-
 Validation: a trap trace with `-t`.
 
 ### M4: Linux image and boot
 
-Deliverable: the third Buildroot image boots to a login prompt with `make run-mmu`; the trap trace shows page faults and S-mode interrupts at `stvec`.
+Deliverable: the MMU images boot to a login prompt with `make run-mmu` and `make run-mmu-max`; the trap trace shows page faults and S-mode interrupts at `stvec`.
 
-- Add `RiscvEmulatorHandleSBI()` and the S-mode `ECALL` branch to `RiscvEmulator-Native/include/RiscvEmulatorImplementationSpecific.h`.
 - Add `rv32i-linux/configs/rv32i_mmu_defconfig` and `configs/kernel_config_mmu`.
-- Add `build-mmu`, `disk-mmu`, `run-mmu` and the MMU DTB target to `rv32i-linux/Makefile`.
-- Add an MMU environment to `RiscvEmulator-Native/platformio_linux_env.ini`.
-- Set `mmu-type = "riscv,sv32"` in the DTS.
-- Update `rv32i-linux/README.md` with the third image and the MMU run command.
+- Add `build-mmu`, `build-mmu-max`, `disk-mmu`, `disk-mmu-max`, `run-mmu`, `run-mmu-max` and the MMU DTB targets to `rv32i-linux/Makefile`.
+- Add the `RV32I-linux-mmu` and `RV32I-linux-mmu-max` environments to `RiscvEmulator-Native/platformio_linux_env.ini`.
+- Add `configs/linux-mmu.dts` and `configs/linux-mmu-max.dts` with `mmu-type = "riscv,sv32"` and the S-mode PLIC context.
+- Load OpenSBI `fw_jump.bin` at `0x80000000` and U-Boot at `0x80200000`; U-Boot loads the Linux `Image` and the DTB from the disk.
+- Update `rv32i-linux/README.md` with the MMU images and the MMU run commands.
 
-Validation: Linux boot, login prompt, console and trap trace.
+Validation: OpenSBI banner, U-Boot prompt, Linux boot, login prompt, console and trap trace.
 
 ## Validation
 
 - `riscv-arch-test` S-mode coverpoints: `coverpoints/priv/S_coverage.svh`, `coverpoints/priv/Svade_coverage.svh` and `coverpoints/priv/Sstvala_coverage.svh`, run on `RV32IZicntr_Zicsr_Sv32`, `RV32IMAZicntr_Zicsr_Zifencei_Sv32` and `RV32IMACBZicntr_Zicsr_Zifencei_Sv32`.
-- Linux boot with `make run-mmu`, a login prompt and a working console.
+- OpenSBI banner, U-Boot prompt and Linux boot with `make run-mmu`, a login prompt and a working console.
 - A trap trace with `-t` to confirm that page faults and S-mode interrupts arrive at `stvec`.
 
 The ACT coverpoints cover the ISA; the Linux boot is the integration test.
@@ -291,6 +289,7 @@ The ACT coverpoints cover the ISA; the Linux boot is the integration test.
 ## Open items
 
 1. Run the Svade and Sstvala coverages on the three Sv32 environments.
+2. Build U-Boot `qemu-riscv32_smode` with the Buildroot toolchain. The host tools fail to link against the system OpenSSL 3 because `ENGINE_*` is absent; use the Buildroot host OpenSSL or disable the RSA host tools.
 
 ## References
 
