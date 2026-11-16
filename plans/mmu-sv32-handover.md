@@ -39,10 +39,12 @@ The MMU image builds: `buildroot/output-mmu/images/Image` and `rootfs.ext4` exis
 
 U-Boot `qemu-riscv32_smode` builds in the `RISC-V-emulator-u-boot` wrapper. The wrapper extends the Tools-Container with the host tools and sets `CONFIG_TOOLS_LIBCRYPTO=n` and `CONFIG_TOOLS_KWBIMAGE=n`, so the host tools do not link against OpenSSL.
 
+The emulator `-l <address>,<file>` option loads an image at a physical address; the positional binary is optional, `-e <address>` sets the initial PC and `-b <address>,<file>` puts the DTB at the given address and sets `a1`. With `-b 0x82200000,linux-mmu.dtb -l 0x80000000,fw_jump.bin -l 0x80400000,u-boot.bin`, OpenSBI boots, prints its banner and jumps to U-Boot at `0x80400000`. U-Boot binds the `ns16550a` console from `chosen/stdout-path` in the DTB and reaches the autoboot prompt.
+
 ## After that
 
 1. Run the Svade and Sstvala coverages on the three Sv32 environments.
-2. Build U-Boot `qemu-riscv32_smode` in the wrapper and add the OpenSBI/U-Boot load addresses (`0x80000000`/`0x80400000`) to the Makefile.
+2. Add the OpenSBI/U-Boot load addresses (`0x80000000`/`0x80400000`) to the `rv32i-linux` Makefile with `-l`.
 3. Put the Linux `Image` and the DTB on the disk and add the U-Boot `boot.scr` with `kernel_addr_r=0x81000000`, `fdt_addr_r=0x82000000` and `ramdisk_addr_r=0x83000000`.
 4. Update the `rv32i-linux/README.md` run commands for the OpenSBI/U-Boot chain.
 5. Add the emulator `-M <size>` option and the DTB `/memory` fixup for the 8 and 16 MiB experiments.

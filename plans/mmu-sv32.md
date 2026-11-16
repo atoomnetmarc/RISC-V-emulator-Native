@@ -118,6 +118,7 @@ The kernel entry expects S-mode with `a0` set to the hart ID, `a1` set to the DT
 | 45  | U-Boot builds with the minimal ISA `rv32ima_zicsr_zifencei`; C, F and D are off | The emulator has I, M, A, C, Zicsr, Zifencei and Zicntr; U-Boot does not need C, F or D. A is required: `arch/riscv/cpu/start.S` uses `amoswap.w` for the hart lottery and the available-harts lock |
 | 46  | `CONFIG_ENV_IS_NOWHERE=y`; the boot script is the configuration | The disk is a Buildroot product, so a saved environment disappears on the next build |
 | 47  | The boot script is a `boot.scr` on the disk, loaded by the distro boot | The distro boot is already enabled and the script is editable without a U-Boot rebuild |
+| 48  | The emulator `-l <address>,<file>` option loads an image at a physical address; repeatable. The positional binary is optional and loads at `0x80000000`. `-e <address>` sets the initial PC (default `0x80000000`). `-b [<address>,]<file>` loads the DTB at the given address (default the top of RAM) and sets `a1` | The OpenSBI -> U-Boot chain needs three images at fixed addresses; `-l`, `-e` and the `-b` address keep the ACT positional-binary contract and put the DTB where `fw_jump` passes it |
 
 ## The U-mode exclusion
 
