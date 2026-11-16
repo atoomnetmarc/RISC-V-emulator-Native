@@ -47,7 +47,7 @@ The `core.yaml` template carries only the parameters that every configuration de
 
 The DTS uses `mmu-type = "riscv,none"` and M-mode interrupt causes 3, 7 and 11. The Linux image uses `CONFIG_RISCV_M_MODE=y`, `# CONFIG_MMU is not set` and uClibc-ng.
 
-The Linux emulator environments in `platformio_linux_env.ini` build `rv32ima_zicsr_zifencei` plus C and Zicntr. The prebuilt OpenSBI is compiled with C, and it reads `mcycle` and `minstret` for the S-mode counter emulation. F, D, Zcd and Zcf are not executed because the DTS does not advertise them. The MMU environments add `RVE_E_SV32`. The emulator starts in M-mode and runs OpenSBI `fw_jump` at `0x80000000`; OpenSBI jumps to U-Boot at `0x80200000`.
+The Linux emulator environments in `platformio_linux_env.ini` build `rv32ima_zicsr_zifencei` plus C and Zicntr. The prebuilt OpenSBI is compiled with C, and it reads `mcycle` and `minstret` for the S-mode counter emulation. F, D, Zcd and Zcf are not executed because the DTS does not advertise them. The MMU environments add `RVE_E_SV32`. The emulator starts in M-mode and runs OpenSBI `fw_jump` at `0x80000000`; OpenSBI jumps to U-Boot at `0x80400000`.
 
 The linker script places `.text.rvmodel` directly after `.text.rvtest`, before `.rodata` and `.data`, so the `R_RISCV_JAL` call to `rvtest_clr_sext_int` stays in range when the signature grows.
 
@@ -72,7 +72,7 @@ The kernel entry expects S-mode with `a0` set to the hart ID, `a1` set to the DT
 | #   | Decision                                                                                                                                                           | Rationale                                                                                              |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
 | 1   | Real Linux kernel with the minimal Sv32 set: 4 KiB pages and 4 MiB megapages, two-level walk, S-mode and U-mode, SBI, MPRV; no TLB, ASID or PMP                     | Linux supports no lighter MMU than Sv32; the ACT Sv32 tests map code and data with megapages and use MPRV |
-| 2   | OpenSBI -> U-Boot -> Linux: the emulator loads OpenSBI `fw_jump` at `0x80000000` and U-Boot at `0x80200000`; U-Boot loads Linux from the disk                        | The realistic boot chain; OpenSBI provides the SBI and U-Boot loads the kernel from the disk |
+| 2   | OpenSBI -> U-Boot -> Linux: the emulator loads OpenSBI `fw_jump` at `0x80000000` and U-Boot at `0x80400000`; U-Boot loads Linux from the disk                        | The realistic boot chain; OpenSBI provides the SBI and U-Boot loads the kernel from the disk |
 | 3   | Core-level `RiscvEmulatorTranslate(state, va, access)` ahead of every fetch, load and store; the board keeps physical `RiscvEmulatorLoad` and `RiscvEmulatorStore` | One translation path, a testable MMU and a board that stays physical                                   |
 | 4   | S-mode PLIC and CLINT with `mideleg` bits 1, 5 and 9, and `mip.SEIP` and `mip.STIP`                                                                                | One trap path and one `stvec` handler, which matches the S-mode MMU                                    |
 | 5   | Two MMU images next to the existing min and max no-MMU images                                                                                                      | Keeps the no-MMU reference and follows the shared-base pattern                                         |
@@ -113,6 +113,11 @@ The kernel entry expects S-mode with `a0` set to the hart ID, `a1` set to the DT
 | 40  | `mip.SEIP` is split into a software-writable bit and a platform signal; a read returns the OR and a write only changes the software bit                              | The manual requires the split for the CSR read-modify-write sequence; `sip.SEIP` is read-only |
 | 41  | The ACT `RVMODEL_SET_SEXT_INT`, `RVMODEL_CLR_SEXT_INT` and `RVMODEL_SET_SSW_INT` macros are injected through `# act-define` in the `.ini` generator                     | The ACT template stays generic and the emulator `.ini` owns the platform macro |
 | 42  | MEI and SEI are raised through a custom platform CSR: `0x8C0` sets and `0x8C1` clears the software-set bits in `mip_platform_software`; MSI and MTI use the CLINT `MSIP` and `mtimecmp` registers | The manual makes `meip` platform-specific; a CSR works in every mode without T-SBI or the identity map, and the separate word keeps the device tick from overwriting the software-set bits |
+| 43  | The emulator `-M <size>` option sets the RAM size and fixes up the DTB `/memory` node; the boot script computes the load addresses from the RAM size | The user wants to experiment with 8 and 16 MiB; a command-line option avoids a rebuild and the DTB stays the single description |
+| 44  | The boot script sets `kernel_addr_r=0x81000000`, `fdt_addr_r=0x82000000` and `ramdisk_addr_r=0x83000000` | The three addresses fit the 64 MiB RAM; the QEMU defaults `0x84000000` and `0x8c000000` are outside it |
+| 45  | U-Boot builds with the minimal ISA `rv32ima_zicsr_zifencei`; C, F and D are off | The emulator has I, M, A, C, Zicsr, Zifencei and Zicntr; U-Boot does not need C, F or D. A is required: `arch/riscv/cpu/start.S` uses `amoswap.w` for the hart lottery and the available-harts lock |
+| 46  | `CONFIG_ENV_IS_NOWHERE=y`; the boot script is the configuration | The disk is a Buildroot product, so a saved environment disappears on the next build |
+| 47  | The boot script is a `boot.scr` on the disk, loaded by the distro boot | The distro boot is already enabled and the script is editable without a U-Boot rebuild |
 
 ## The U-mode exclusion
 
@@ -231,7 +236,7 @@ The RISC-V manual requires M-mode at reset (`machine.adoc`, `m_mode_priv_at_rese
 
 Linux with `CONFIG_MMU=y` must run in S-mode because `satp` is an S-mode CSR and is active only in S-mode or U-mode (`supervisor.adoc`). M-mode has no address translation. The no-MMU image uses `CONFIG_RISCV_M_MODE=y` and runs in M-mode. The MMU image needs an SBI and an M-mode firmware that switches to S-mode. The SBI and the firmware stub are not implemented now; the ACT tests are the current work.
 
-The DTB describes the CPU with `mmu-type = "riscv,sv32"`. The CLINT uses S-mode interrupt causes 1 and 5. The PLIC uses S-mode interrupt cause 9. The memory node keeps 64 MiB at `0x80000000`.
+The DTB describes the CPU with `mmu-type = "riscv,sv32"`. The CLINT uses S-mode interrupt causes 1 and 5. The PLIC uses S-mode interrupt cause 9. The memory node keeps 64 MiB at `0x80000000`; the emulator `-M <size>` option overrides the RAM size and fixes up the `/memory` node. The boot script sets `kernel_addr_r=0x81000000`, `fdt_addr_r=0x82000000` and `ramdisk_addr_r=0x83000000`; the distro boot loads `boot.scr` from the disk.
 
 ### Devices
 
@@ -273,7 +278,7 @@ Deliverable: the MMU images boot to a login prompt with `make run-mmu` and `make
 - Add `build-mmu`, `build-mmu-max`, `disk-mmu`, `disk-mmu-max`, `run-mmu`, `run-mmu-max` and the MMU DTB targets to `rv32i-linux/Makefile`.
 - Add the `RV32I-linux-mmu` and `RV32I-linux-mmu-max` environments to `RiscvEmulator-Native/platformio_linux_env.ini`.
 - Add `configs/linux-mmu.dts` and `configs/linux-mmu-max.dts` with `mmu-type = "riscv,sv32"` and the S-mode PLIC context.
-- Load OpenSBI `fw_jump.bin` at `0x80000000` and U-Boot at `0x80200000`; U-Boot loads the Linux `Image` and the DTB from the disk.
+- Load OpenSBI `fw_jump.bin` at `0x80000000` and U-Boot at `0x80400000`; U-Boot loads the Linux `Image` and the DTB from the disk.
 - Update `rv32i-linux/README.md` with the MMU images and the MMU run commands.
 
 Validation: OpenSBI banner, U-Boot prompt, Linux boot, login prompt, console and trap trace.
