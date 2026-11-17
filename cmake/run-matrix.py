@@ -30,6 +30,7 @@ import sys
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CMAKE_DIR = os.path.join(REPO, "cmake")
 GENERATOR = os.path.join(REPO, "generate-isa-extension-combination.py")
+INI_FILE = os.path.join(REPO, "platformio_isa-extension-combination_env.ini")
 COMBINATIONS_FILE = os.path.join(CMAKE_DIR, "isa-combinations.cmake")
 
 # Compilers tested by --all. Compilers not found on PATH are skipped
@@ -163,7 +164,13 @@ def ensure_combinations_file() -> list:
             check=True,
         )
 
-    if not os.path.exists(COMBINATIONS_FILE):
+    # Regenerate when the generator or the ini changed, so a new environment
+    # or a changed act-define line reaches the matrix without a manual step.
+    inputs = (GENERATOR, INI_FILE)
+    if not os.path.exists(COMBINATIONS_FILE) or any(
+        os.path.getmtime(path) > os.path.getmtime(COMBINATIONS_FILE)
+        for path in inputs
+    ):
         generate()
     text = open(COMBINATIONS_FILE).read()
     match = re.search(r"set\(RVE_COMBINATIONS\n(.*?)\n\)", text, re.S)

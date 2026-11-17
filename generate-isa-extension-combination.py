@@ -81,6 +81,22 @@ SUBSET = {
     "Zmmul": {"define": ["-D RVE_E_ZMMUL=1"]},
     "Zicsr": {"define": ["-D RVE_E_ZICSR=1"]},
     "Zifencei": {"define": ["-D RVE_E_ZIFENCEI=1"]},
+    "Sv32": {
+        "define": ["-D RVE_E_SV32=1", "-D RVE_E_ZICSR=1"],
+        # The boot identity map is not user accessible, so tests that run U-mode
+        # code without begin_sv_test trap-loop in the reference model. The
+        # satp-access test needs the reverted Sv.py patch. Both groups are
+        # excluded from the Sv32 environments until the generators are fixed.
+        "act": [
+            "act-exclude-extensions: Exceptions,Sstvala_s,Sstvala_u,U,S_Zicntr,Sv_sv32_satp_access_Smode",
+            "act-note: The U-mode tests trap-loop under the Sv32 boot identity map, which is not user accessible. Sv_sv32_satp_access_Smode needs the reverted satp-access patch.",
+            "act-define: RVMODEL_SET_SEXT_INT(_R1, _R2) li a1, 512; csrw 0x8C0, a1",
+            "act-define: RVMODEL_CLR_SEXT_INT(_R1, _R2) li a1, 512; csrw 0x8C1, a1",
+            "act-define: RVMODEL_SET_SEXT_INT_M(_R1, _R2) li a1, 512; csrw 0x8C0, a1",
+            "act-define: RVMODEL_CLR_SEXT_INT_M(_R1, _R2) li a1, 512; csrw 0x8C1, a1",
+            "act-define: RVMODEL_SET_SSW_INT(_R1, _R2) li a1, 2; li a0, 0x3445a073; ecall",
+        ],
+    },
     "Zba": {"define": ["-D RVE_E_ZBA=1"]},
     "Zbb": {"define": ["-D RVE_E_ZBB=1"]},
     "Zbc": {
@@ -109,7 +125,16 @@ SUBSET = {
     "Misalign": {"define": ["-D RVE_E_MISALIGNED=1"]},
 }
 
-KEYS = list(SUBSET)
+# Sv32 is not part of the covering array. The ACT wrapper needs exactly these
+# three variants: the minimal set, the Linux set and the maximal set.
+PINNED = [
+    ("Zicntr", "Zicsr", "Sv32"),
+    ("M", "A", "Zicntr", "Zicsr", "Zifencei", "Sv32"),
+    ("M", "A", "C", "B", "Zicntr", "Zicsr", "Zifencei", "Sv32"),
+]
+PINNED_ONLY = {"Sv32"}
+
+KEYS = [key for key in SUBSET if key not in PINNED_ONLY]
 
 
 def is_legal(combination: list) -> bool:
@@ -331,6 +356,10 @@ def main() -> None:
     if not args.ini and not args.cmake:
         parser.error("select at least one output: --ini PATH and/or --cmake PATH")
 
+    for comb in PINNED:
+        if not is_legal(list(comb)):
+            parser.error(f"pinned combination is not legal: {comb}")
+
     envs = []
     for bi_key, bi_value in BASE_INTEGER_ISA.items():
         if args.full:
@@ -341,6 +370,8 @@ def main() -> None:
             # In default mode the whole set is the smoke subset.
             for comb in default_mode():
                 envs.append(collect_env(bi_key, bi_value, comb, True))
+        for comb in PINNED:
+            envs.append(collect_env(bi_key, bi_value, comb, True))
 
     if args.ini:
         if args.ini == "-":

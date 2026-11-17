@@ -10,3 +10,5 @@ binaries
 isa-combinations.cmake
 
 __pycache__
+
+*.dtb

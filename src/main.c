@@ -83,6 +83,14 @@ uint32_t watchpoint_length = 1;
 // Set when a breakpoint or watchpoint stops the emulation.
 uint8_t stop_condition_hit = 0;
 
+// Extra images loaded by -l <address>,<file>; repeatable.
+#define MAX_LOADS 8
+static struct {
+    uint32_t address;
+    const char *path;
+} loads[MAX_LOADS];
+static size_t load_count = 0;
+
 // Consumer override of the library's weak disassembly output function. The
 // library renders each instruction via the shape functions; this override
 // sends the fragments to stdout. The verbose gate lives here (a consumer
@@ -111,10 +119,16 @@ static uint32_t csr_raw(const void *csr) {
 static const char *trap_cause_name(uint32_t code, uint8_t interrupt) {
     if (interrupt != 0) {
         switch (code) {
+            case 1:
+                return "supervisor software interrupt";
             case 3:
                 return "machine software interrupt";
+            case 5:
+                return "supervisor timer interrupt";
             case 7:
                 return "machine timer interrupt";
+            case 9:
+                return "supervisor external interrupt";
             case 11:
                 return "machine external interrupt";
             default:
@@ -159,6 +173,22 @@ static const char *trap_cause_name(uint32_t code, uint8_t interrupt) {
 // Print the machine CSRs and the key registers at a trap.
 static void print_trap(const RiscvEmulatorState_t *state) {
 #if (RVE_E_ZICSR == 1)
+#if (RVE_E_SV32 == 1)
+    if (state->privilege == 1) {
+        uint32_t scause = csr_raw(&state->csr.scause);
+        uint32_t stvec = ((uint32_t)state->csr.stvec.base << 2) | state->csr.stvec.mode;
+        printf("trap %zu: scause=0x%08X (%s) sepc=0x%08X stval=0x%08X sstatus=0x%08X sscratch=0x%08X stvec=0x%08X\n",
+               trap_count, scause,
+               trap_cause_name(state->csr.scause.exceptioncode, state->csr.scause.interrupt),
+               state->csr.sepc, state->csr.stval,
+               csr_raw(&state->csr.mstatus) & RVE_CSR_SSTATUS_READ_MASK,
+               state->csr.sscratch, stvec);
+        printf("  pc=0x%08X instruction=0x%08X ra=0x%08X sp=0x%08X gp=0x%08X tp=0x%08X\n",
+               state->programcounter, state->instruction.value, state->reg.ra,
+               state->reg.sp, state->reg.gp, state->reg.tp);
+        return;
+    }
+#endif
     uint32_t mcause = csr_raw(&state->csr.mcause);
     uint32_t mtvec = ((uint32_t)state->csr.mtvec.base << 2) | state->csr.mtvec.mode;
     printf("trap %zu: mcause=0x%08X (%s) mepc=0x%08X mtval=0x%08X mstatus=0x%08X mscratch=0x%08X mtvec=0x%08X\n",
@@ -271,16 +301,19 @@ int main(int argc, char *argv[]) {
     // Parse -v [<start>] to enable verbose instruction tracing from an
     // instruction count, -m <N> to limit the number of simulated instructions
     // (0 = unlimited, the default), -p <N> to print the PC every N
-    // instructions, -b <dtb> to load a device tree blob, -D <file> to attach
-    // a disk image, -N <ifname> to attach a TAP interface, -t [<count>] to log
-    // traps, -r to dump registers at stop, -d <address>,<length> to dump RAM
-    // at stop, -s <address> to stop at a PC and -w <address>[,<length>] to
-    // stop on a load or store. The binary path is the last argument;
-    // run_test.sh passes it via elf2bin.sh.
+    // instructions, -b <dtb> to load a device tree blob, -l <address>,<file>
+    // to load an extra image, -e <address> to set the initial PC, -D <file>
+    // to attach a disk image, -N <ifname> to attach a TAP interface,
+    // -t [<count>] to log traps, -r to dump registers at stop,
+    // -d <address>,<length> to dump RAM at stop, -s <address> to stop at a PC
+    // and -w <address>[,<length>] to stop on a load or store. The binary path
+    // is the last argument; run_test.sh passes it via elf2bin.sh.
     const char *binpath = NULL;
     const char *dtbpath = NULL;
     const char *diskpath = NULL;
     const char *tappath = NULL;
+    uint32_t entry = RAM_ORIGIN;
+    uint32_t dtb_address_override = 0;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-v") == 0) {
             verbose = 1;
@@ -310,7 +343,38 @@ int main(int argc, char *argv[]) {
             }
         } else if (strcmp(argv[i], "-b") == 0 && i + 1 < argc) {
             i++;
-            dtbpath = argv[i];
+            char *end;
+            unsigned long address = strtoul(argv[i], &end, 0);
+            if (*end == ',') {
+                dtb_address_override = (uint32_t)address;
+                dtbpath = end + 1;
+            } else {
+                dtbpath = argv[i];
+            }
+        } else if (strcmp(argv[i], "-l") == 0 && i + 1 < argc) {
+            i++;
+            char *end;
+            unsigned long address = strtoul(argv[i], &end, 0);
+            if (*end != ',' || end[1] == '\0') {
+                printf("Error: -l requires <address>,<file>, got '%s'.\n", argv[i]);
+                return 2;
+            }
+            if (load_count == MAX_LOADS) {
+                printf("Error: at most %d -l options are supported.\n", MAX_LOADS);
+                return 2;
+            }
+            loads[load_count].address = (uint32_t)address;
+            loads[load_count].path = end + 1;
+            load_count++;
+        } else if (strcmp(argv[i], "-e") == 0 && i + 1 < argc) {
+            i++;
+            char *end;
+            unsigned long address = strtoul(argv[i], &end, 0);
+            if (*end != '\0') {
+                printf("Error: -e requires a numeric address, got '%s'.\n", argv[i]);
+                return 2;
+            }
+            entry = (uint32_t)address;
         } else if (strcmp(argv[i], "-D") == 0 && i + 1 < argc) {
             i++;
             diskpath = argv[i];
@@ -380,8 +444,8 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    if (binpath == NULL) {
-        printf("Usage: %s [-v [<start>]] [-m <instructions>] [-p <interval>] [-b <dtb>] [-D <disk>] [-t [<count>]] [-r] [-d <address>,<length>] [-s <address>] [-w <address>[,<length>]] <binary>\n", argv[0]);
+    if (binpath == NULL && load_count == 0) {
+        printf("Usage: %s [-v [<start>]] [-m <instructions>] [-p <interval>] [-b <dtb>] [-l <address>,<file>] [-e <address>] [-D <disk>] [-t [<count>]] [-r] [-d <address>,<length>] [-s <address>] [-w <address>[,<length>]] [<binary>]\n", argv[0]);
         return 2;
     }
 
@@ -398,33 +462,59 @@ int main(int argc, char *argv[]) {
 
     // Load the actual binary (objcopy -O binary output) directly into RAM.
     // Its byte 0 corresponds to address 0x80000000 (RAM_ORIGIN).
-    FILE *fbin = fopen(binpath, "rb");
-    if (fbin == NULL) {
-        free(memory);
-        printf("file not found: %s\n", binpath);
-        return 2;
-    }
-    size_t binsize = fread(memory, sizeof(uint8_t), RAM_LENGTH, fbin);
-    if (ferror(fbin)) {
-        printf("Error reading %s.\n", binpath);
+    size_t binsize = 0;
+    if (binpath != NULL) {
+        FILE *fbin = fopen(binpath, "rb");
+        if (fbin == NULL) {
+            free(memory);
+            printf("file not found: %s\n", binpath);
+            return 2;
+        }
+        binsize = fread(memory, sizeof(uint8_t), RAM_LENGTH, fbin);
+        if (ferror(fbin)) {
+            printf("Error reading %s.\n", binpath);
+            fclose(fbin);
+            free(memory);
+            return 2;
+        }
+        if (verbose) {
+            printf("Read %zu bytes.\n", binsize);
+        }
         fclose(fbin);
-        free(memory);
-        return 2;
     }
-    if (verbose) {
-        printf("Read %zu bytes.\n", binsize);
-    }
-    fclose(fbin);
 
-    // Load the device tree blob into the reserved area at the top of RAM.
+    // Load the extra images from -l <address>,<file>.
+    for (size_t i = 0; i < load_count; i++) {
+        if (loads[i].address < RAM_ORIGIN || loads[i].address >= RAM_ORIGIN + RAM_LENGTH) {
+            free(memory);
+            printf("Error: -l address 0x%08X is outside RAM.\n", loads[i].address);
+            return 2;
+        }
+        FILE *fload = fopen(loads[i].path, "rb");
+        if (fload == NULL) {
+            free(memory);
+            printf("file not found: %s\n", loads[i].path);
+            return 2;
+        }
+        size_t offset = loads[i].address - RAM_ORIGIN;
+        size_t size = fread(&memory[offset], sizeof(uint8_t), RAM_LENGTH - offset, fload);
+        if (ferror(fload)) {
+            fclose(fload);
+            free(memory);
+            printf("Error reading %s.\n", loads[i].path);
+            return 2;
+        }
+        fclose(fload);
+        if (verbose) {
+            printf("Loaded %zu bytes at 0x%08X.\n", size, loads[i].address);
+        }
+    }
+
+    // Load the device tree blob. Without an address it goes into the reserved
+    // area at the top of RAM; -b <address>,<file> puts it at the given address.
     // The board passes its physical address to the kernel in a1.
     uint32_t dtb_address = 0;
     if (dtbpath != NULL) {
-        if (binsize > (size_t)RAM_LENGTH - (size_t)DTB_RESERVE) {
-            free(memory);
-            printf("Error: binary overlaps the DTB reserve.\n");
-            return 2;
-        }
         FILE *fdtb = fopen(dtbpath, "rb");
         if (fdtb == NULL) {
             free(memory);
@@ -434,13 +524,42 @@ int main(int argc, char *argv[]) {
         fseek(fdtb, 0, SEEK_END);
         long dtbsize = ftell(fdtb);
         fseek(fdtb, 0, SEEK_SET);
-        if (dtbsize <= 0 || (size_t)dtbsize > (size_t)DTB_RESERVE) {
+        if (dtbsize <= 0) {
             fclose(fdtb);
             free(memory);
-            printf("Error: DTB must be between 1 and %u bytes.\n", (unsigned)DTB_RESERVE);
+            printf("Error: DTB is empty.\n");
             return 2;
         }
-        size_t dtb_offset = (size_t)RAM_LENGTH - (size_t)DTB_RESERVE;
+        size_t dtb_offset;
+        if (dtb_address_override != 0) {
+            if (dtb_address_override < RAM_ORIGIN || dtb_address_override >= RAM_ORIGIN + RAM_LENGTH) {
+                fclose(fdtb);
+                free(memory);
+                printf("Error: -b address 0x%08X is outside RAM.\n", dtb_address_override);
+                return 2;
+            }
+            dtb_offset = dtb_address_override - RAM_ORIGIN;
+            if ((size_t)dtbsize > (size_t)RAM_LENGTH - dtb_offset) {
+                fclose(fdtb);
+                free(memory);
+                printf("Error: DTB does not fit at 0x%08X.\n", dtb_address_override);
+                return 2;
+            }
+        } else {
+            if (binsize > (size_t)RAM_LENGTH - (size_t)DTB_RESERVE) {
+                fclose(fdtb);
+                free(memory);
+                printf("Error: binary overlaps the DTB reserve.\n");
+                return 2;
+            }
+            if ((size_t)dtbsize > (size_t)DTB_RESERVE) {
+                fclose(fdtb);
+                free(memory);
+                printf("Error: DTB must be between 1 and %u bytes.\n", (unsigned)DTB_RESERVE);
+                return 2;
+            }
+            dtb_offset = (size_t)RAM_LENGTH - (size_t)DTB_RESERVE;
+        }
         if (fread(&memory[dtb_offset], (size_t)dtbsize, 1, fdtb) != 1) {
             fclose(fdtb);
             free(memory);
@@ -536,8 +655,9 @@ int main(int argc, char *argv[]) {
     // RiscvEmulatorInit sets the PC to ROM_ORIGIN (0x20000000). ACT4 places
     // all code and data in RAM at RAM_ORIGIN (0x80000000), so override the PC
     // after init. Without this the emulator boots at the HALT region and crashes.
-    RiscvEmulatorState.programcounter = RAM_ORIGIN;
-    RiscvEmulatorState.programcounternext = RAM_ORIGIN;
+    // -e <address> overrides the entry point.
+    RiscvEmulatorState.programcounter = entry;
+    RiscvEmulatorState.programcounternext = entry;
 
     // maxloopcounter is 0 (the default) unless -m <N> is given, meaning the
     // emulation runs until the test signals a halt.
@@ -588,7 +708,8 @@ int main(int argc, char *argv[]) {
         }
 
         // If this prints then the instruction is not implemented.
-        if (RiscvEmulatorState.instructionhandled == 0 &&
+        if (RiscvEmulatorState.instructionexecuted != 0 &&
+            RiscvEmulatorState.instructionhandled == 0 &&
             RiscvEmulatorIsWaiting(&RiscvEmulatorState) == 0) {
             printf("pc: 0x%08X, instruction: 0x%08X, ???\n",
                    RiscvEmulatorState.programcounter,
