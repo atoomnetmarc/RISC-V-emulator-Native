@@ -25,7 +25,7 @@ Out of scope:
 
 ## Status
 
-M1 (S-mode), M2 (Sv32), M3 (S-mode devices) and M4 (Linux boot) are done; the MMU images boot to a shell. M5 (no-MMU cleanup) remains.
+M1 (S-mode), M2 (Sv32), M3 (S-mode devices), M4 (Linux boot) and M5 (no-MMU cleanup) are done; the MMU images boot to a shell.
 
 ## Architecture
 
@@ -119,24 +119,10 @@ The boot identity map is not user accessible. Tests that run U-mode code without
 | Separate branch or repo                   | Duplication and double maintenance                                                                                                                                          |
 | Parameterized build matrix                | More Makefile logic; the two images follow the existing pattern                                                                                                             |
 
-## M5: no-MMU cleanup
-
-Deliverable: the MMU images are the only Linux target; the no-MMU images, configs, DTBs and documentation are gone.
-
-1. Inventory: grep for `nommu`, `no-MMU`, `linux-min`, `linux-max`, `RV32I-linux-min`, `RV32I-linux-max`, `output-max`, `genimage.cfg`, `linux.dts` and `linux-max.dts`.
-2. PlatformIO: remove the four no-MMU environments; fold the `[linux-min]` and `[linux-max]` flags into `[linux-mmu]` and `[linux-mmu-max]`; keep the MMU `-disasm` environments; update `.vscode/launch.json`.
-3. Makefile: remove the `MIN`/`MAX` variables and targets; make the MMU targets the default (`build`, `disk`, `run`, `defconfig`, `clean`); keep the max variants; set `EMULATOR` to the MMU max binary.
-4. Configs: remove `rv32i_nommu_defconfig`, `kernel_config` and `genimage.cfg`; remove `configs/linux.dts` and `configs/linux-max.dts`; point the MMU DTS comments at `genimage-mmu.cfg`; rewrite `rv32i-linux/docs/disk-root.md` for the boot and rootfs partitions.
-5. Documentation: rewrite `rv32i-linux/README.md` for the MMU target; update the Native `README.md` Linux boot example; update the scope, decision 5 and alternatives in this plan; update `RiscvEmulator-Devices/docs/diskio.md` for the two-partition disk and `root=PARTUUID`; check `RiscvEmulator-u-boot/docs/design.md`.
-6. Generated artefacts: remove `buildroot/output/`, `output-max/`, `linux-min.dtb`, `linux-max.dtb`, the no-MMU emulator binaries and the PlatformIO build cache of the removed environments.
-7. Validation: `pio run` in the Native, AVR and SAM projects; `python3 cmake/run-matrix.py --all`; `make build` and `make run` in `rv32i-linux`; `make build-mmu-max` and `make run-mmu-max`; `make build` in `RiscvEmulator-u-boot`; a final grep for the removed names.
-
-The `[linux-min]` and `[linux-max]` flags are the base of the MMU environments. The flags move first, and `pio run -e RV32I-linux-mmu` confirms the MMU build ahead of the no-MMU removal.
-
 ## Validation
 
 - `riscv-arch-test` S-mode coverpoints: `coverpoints/priv/S_coverage.svh`, `coverpoints/priv/Svade_coverage.svh` and `coverpoints/priv/Sstvala_coverage.svh`, run on `RV32IZicntr_Zicsr_Sv32`, `RV32IMAZicntr_Zicsr_Zifencei_Sv32` and `RV32IMACBZicntr_Zicsr_Zifencei_Sv32`.
-- OpenSBI banner, U-Boot prompt and Linux boot with `make run-mmu`, a shell prompt and a working console.
+- OpenSBI banner, U-Boot prompt and Linux boot with `make run`, a shell prompt and a working console.
 - A trap trace with `-t` to confirm that page faults and S-mode interrupts arrive at `stvec`.
 
 The ACT coverpoints cover the ISA; the Linux boot is the integration test.

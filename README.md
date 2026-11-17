@@ -14,18 +14,17 @@ Both produce binaries for the RISC-V-emulator-ACT test wrapper in
 
 ## Linux boot
 
-Build a DTB from the sample DTS and pass it with `-b`:
+The Linux target is the Sv32 image in [`rv32i-linux`](../rv32i-linux): OpenSBI at `0x80000000`, U-Boot at `0x80400000` and the kernel on the disk. Build the DTB from `configs/linux-mmu.dts`:
 
 ```sh
-dtc -I dts -O dtb -o linux.dtb configs/linux.dts
-./binaries/gcc/RV32I -b linux.dtb Image
+dtc -I dts -O dtb -o linux-mmu.dtb configs/linux-mmu.dts
 ```
 
-The emulator loads the DTB into the top 16 KB of RAM and passes its physical address in `a1`. The hart ID is `0` in `a0`. The sample DTS declares 64 MB of RAM, a CLINT at `0x02000000`, a 16550 UART at `0x10000000`, a SYSCON at `0x00100000`, virtio-blk at `0x10001000`, virtio-console at `0x10002000` and virtio-net at `0x10003000`.
+The emulator loads the DTB at the address given with `-b` and passes its physical address in `a1`. The hart ID is `0` in `a0`. The DTS declares 64 MB of RAM, a CLINT at `0x02000000`, a 16550 UART at `0x10000000`, a SYSCON at `0x00100000`, virtio-blk at `0x10001000`, virtio-console at `0x10002000` and virtio-net at `0x10003000`.
 
 ## Multi-stage boot
 
-`-l <address>,<file>` loads an image at a physical address; repeat it for each stage. The positional binary is optional and still loads at `0x80000000`. `-e <address>` sets the initial PC; the default is `0x80000000`. For example, OpenSBI `fw_jump` at `0x80000000`, U-Boot at `0x80400000` and the DTB at `0x82200000` (the `FW_JUMP_FDT_OFFSET` target):
+`-l <address>,<file>` loads an image at a physical address; repeat it for each stage. The positional binary is optional and still loads at `0x80000000`. `-e <address>` sets the start PC; the default is `0x80000000`. For example, OpenSBI `fw_jump` at `0x80000000`, U-Boot at `0x80400000` and the DTB at `0x82200000` (the `FW_JUMP_FDT_OFFSET` target):
 
 ```sh
 ./binaries/gcc/RV32I-linux-mmu \
