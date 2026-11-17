@@ -14,7 +14,7 @@
     chosen {
         /* U-Boot binds the ns16550 console from this path before relocation. */
         stdout-path = "/soc/uart@10000000";
-        /* Keep this PARTUUID in sync with configs/genimage-mmu.cfg in rv32i-linux. */
+        /* Keep this PARTUUID in sync with configs/genimage-mmu.cfg in RISC-V-emulator-Linux. */
         bootargs = "earlycon=uart8250,mmio,0x10000000,1000000 console=ttyS0 root=PARTUUID=6f3d2a1e-9c4b-4e7a-8b1d-2c5e7f9a0b3c rw rootfstype=ext4";
     };
 

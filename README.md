@@ -14,7 +14,7 @@ Both produce binaries for the RISC-V-emulator-ACT test wrapper in
 
 ## Linux boot
 
-The Linux target is the Sv32 image in [`rv32i-linux`](../rv32i-linux): OpenSBI at `0x80000000`, U-Boot at `0x80400000` and the kernel on the disk. Build the DTB from `configs/linux-mmu.dts`:
+The Linux target is the Sv32 image in [`RISC-V-emulator-Linux`](../RISC-V-emulator-Linux): OpenSBI at `0x80000000`, U-Boot at `0x80400000` and the kernel on the disk. Build the DTB from `configs/linux-mmu.dts`:
 
 ```sh
 dtc -I dts -O dtb -o linux-mmu.dtb configs/linux-mmu.dts

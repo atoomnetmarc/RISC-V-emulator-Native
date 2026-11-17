@@ -34,7 +34,7 @@ The implemented behaviour lives in the core and target documentation:
 - [Privilege modes and supervisor CSRs](../../RISC-V-emulator/docs/privilege.md) - privilege state, `mstatus`, delegation, S-mode CSRs, `SRET`, `SFENCE.VMA`, `WFI` and `ECALL`.
 - [Sv32 address translation](../../RISC-V-emulator/docs/sv32.md) - `satp`, the two-level walk, PTE bits, permissions, A/D and page-crossing accesses.
 - [Interrupts and delegation](../../RISC-V-emulator/docs/interrupts.md) - `mip`/`mie`, the platform sources, delegation and priority.
-- [Linux MMU target](../../rv32i-linux/docs/linux-mmu.md) - kernel configuration, Linux constraints and the boot chain.
+- [Linux MMU target](../../RISC-V-emulator-Linux/docs/linux-mmu.md) - kernel configuration, Linux constraints and the boot chain.
 - [U-Boot design](../../RISC-V-emulator-u-boot/docs/design.md) - boot chain, memory map, disk layout and environment.
 - [Disk I/O design](../../RISC-V-emulator-Devices/docs/diskio.md) - virtio-mmio, virtio-blk and the PLIC.
 
@@ -122,7 +122,7 @@ The boot identity map is not user accessible. Tests that run U-mode code without
 ## Validation
 
 - `riscv-arch-test` S-mode coverpoints: `coverpoints/priv/S_coverage.svh`, `coverpoints/priv/Svade_coverage.svh` and `coverpoints/priv/Sstvala_coverage.svh`, run on `RV32IZicntr_Zicsr_Sv32`, `RV32IMAZicntr_Zicsr_Zifencei_Sv32` and `RV32IMACBZicntr_Zicsr_Zifencei_Sv32`.
-- OpenSBI banner, U-Boot prompt and Linux boot with `make run`, a shell prompt and a working console.
+- OpenSBI banner, U-Boot prompt and Linux boot with `make run` and `make run-max`, a shell prompt and a working console.
 - A trap trace with `-t` to confirm that page faults and S-mode interrupts arrive at `stvec`.
 
 The ACT coverpoints cover the ISA; the Linux boot is the integration test.
