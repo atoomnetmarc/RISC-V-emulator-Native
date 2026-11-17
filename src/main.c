@@ -708,7 +708,8 @@ int main(int argc, char *argv[]) {
         }
 
         // If this prints then the instruction is not implemented.
-        if (RiscvEmulatorState.instructionhandled == 0 &&
+        if (RiscvEmulatorState.instructionexecuted != 0 &&
+            RiscvEmulatorState.instructionhandled == 0 &&
             RiscvEmulatorIsWaiting(&RiscvEmulatorState) == 0) {
             printf("pc: 0x%08X, instruction: 0x%08X, ???\n",
                    RiscvEmulatorState.programcounter,
