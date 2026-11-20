@@ -2,7 +2,7 @@
 
 This is an implementation of my [RISC-V cpu emulator](https://github.com/atoomnetmarc/RISC-V-emulator) that can compile into an operating system executable.
 
-The platform devices (CLINT, 16550 UART, SYSCON, PLIC, virtio-blk, virtio-console and virtio-net) come from the shared [RISC-V-emulator-Devices](https://github.com/atoomnetmarc/RISC-V-emulator-Devices) library. The port wires them in `RiscvEmulatorLoad` and `RiscvEmulatorStore`.
+The platform devices (CLINT, 16550 UART, SYSCON, PLIC, virtio-blk, virtio-console, virtio-net and virtio-rng) come from the shared [RISC-V-emulator-Devices](https://github.com/atoomnetmarc/RISC-V-emulator-Devices) library. The port wires them in `RiscvEmulatorLoad` and `RiscvEmulatorStore`.
 
 Two build systems are supported:
 
@@ -20,7 +20,7 @@ The Linux target is the Sv32 image in [`RISC-V-emulator-Linux`](../RISC-V-emulat
 dtc -I dts -O dtb -o linux-mmu.dtb configs/linux-mmu.dts
 ```
 
-The emulator loads the DTB at the address given with `-b` and passes its physical address in `a1`. The hart ID is `0` in `a0`. The DTS declares 64 MB of RAM, a CLINT at `0x02000000`, a 16550 UART at `0x10000000` on PLIC source 4, a SYSCON at `0x00100000`, virtio-blk at `0x10001000`, virtio-console at `0x10002000` and virtio-net at `0x10003000`. The CPU node carries `riscv,isa-base` and `riscv,isa-extensions` for kernel ISA detection, alongside the legacy `riscv,isa` string.
+The emulator loads the DTB at the address given with `-b` and passes its physical address in `a1`. The hart ID is `0` in `a0`. The DTS declares 64 MB of RAM, a CLINT at `0x02000000`, a 16550 UART at `0x10000000` on PLIC source 4, a SYSCON at `0x00100000`, virtio-blk at `0x10001000`, virtio-console at `0x10002000`, virtio-net at `0x10003000` and virtio-rng at `0x10004000` on PLIC source 5. The CPU node carries `riscv,isa-base` and `riscv,isa-extensions` for kernel ISA detection, alongside the legacy `riscv,isa` string.
 
 ## Multi-stage boot
 
@@ -39,6 +39,7 @@ The emulator loads the DTB at the address given with `-b` and passes its physica
 
 - `-D <file>` attaches a disk image to virtio-blk.
 - `-N <ifname>` attaches an existing TAP interface to virtio-net. The interface must already exist and be up. The emulator opens `/dev/net/tun` with `O_NONBLOCK`, verifies the flag with `fcntl`, and polls the descriptor with a zero timeout before reading, so an idle TAP never blocks the main loop.
+- virtio-rng fills guest entropy buffers from the host `getrandom()` call. No command-line option is needed.
 
 ## Idle behaviour
 

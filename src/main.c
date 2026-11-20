@@ -782,6 +782,7 @@ int main(int argc, char *argv[]) {
     virtio_blk_init(&virtio_blk, VIRTIO_BLK_ORIGIN, VIRTIO_BLK_SIZE, memory, RAM_ORIGIN, RAM_LENGTH, disk_capacity);
     virtio_console_init(&virtio_console, VIRTIO_CONSOLE_ORIGIN, VIRTIO_CONSOLE_SIZE, memory, RAM_ORIGIN, RAM_LENGTH);
     virtio_net_init(&virtio_net, VIRTIO_NET_ORIGIN, VIRTIO_NET_SIZE, memory, RAM_ORIGIN, RAM_LENGTH, net_mac);
+    virtio_rng_init(&virtio_rng, VIRTIO_RNG_ORIGIN, VIRTIO_RNG_SIZE, memory, RAM_ORIGIN, RAM_LENGTH);
 
     if (verbose) {
         printf("RiscvEmulatorInit()\n");

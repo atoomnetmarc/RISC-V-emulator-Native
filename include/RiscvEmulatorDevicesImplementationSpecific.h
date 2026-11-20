@@ -5,10 +5,12 @@ SPDX-License-Identifier: Apache-2.0
 
 */
 
+#include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/random.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -51,6 +53,27 @@ static inline void board_net_write(const void *buffer, uint32_t length) {
 }
 
 #define RVE_DEV_VIRTIO_NET_TX(buffer, length) board_net_write(buffer, length)
+
+// Fills a buffer with host entropy.
+static inline void board_rng_fill(void *buffer, uint32_t length) {
+    uint8_t *bytes = buffer;
+
+    while (length > 0) {
+        ssize_t count = getrandom(bytes, length, 0);
+        if (count > 0) {
+            bytes += count;
+            length -= (uint32_t)count;
+            continue;
+        }
+        if (count < 0 && errno == EINTR) {
+            continue;
+        }
+        memset(bytes, 0, length);
+        return;
+    }
+}
+
+#define RVE_DEV_VIRTIO_RNG_FILL(buffer, length) board_rng_fill(buffer, length)
 
 // Disk file descriptor, opened by main() when -D <file> is given.
 extern int disk_fd;
@@ -159,6 +182,12 @@ static virtio_console_t virtio_console;
 
 static virtio_net_t virtio_net;
 
+// virtio-rng memory range.
+#define VIRTIO_RNG_ORIGIN 0x10004000
+#define VIRTIO_RNG_SIZE   0x1000
+
+static virtio_rng_t virtio_rng;
+
 /**
  * Loads bytes from the devices to the RISC-V hart.
  *
@@ -189,6 +218,10 @@ static inline bool RiscvDevicesLoad(uint32_t address, void *destination, uint8_t
     }
 
     if (virtio_net_read(&virtio_net, address, destination, length)) {
+        return true;
+    }
+
+    if (virtio_rng_read(&virtio_rng, address, destination, length)) {
         return true;
     }
 
@@ -236,6 +269,10 @@ static inline bool RiscvDevicesStore(uint32_t address, const void *source, uint8
         return true;
     }
 
+    if (virtio_rng_write(&virtio_rng, address, source, length)) {
+        return true;
+    }
+
     if (syscon_write(&syscon, address, source, length)) {
         return true;
     }
@@ -256,6 +293,7 @@ static inline void RiscvDevicesTick(RiscvEmulatorState_t *state) {
     plic_set_pending(&plic, 2, virtio_console_irq_pending(&virtio_console));
     plic_set_pending(&plic, 3, virtio_net_irq_pending(&virtio_net));
     plic_set_pending(&plic, 4, uart16550_irq_pending(&uart));
+    plic_set_pending(&plic, 5, virtio_rng_irq_pending(&virtio_rng));
 
 #if (RVE_E_ZICSR == 1)
     if (clint_timer_pending(&clint)) {
