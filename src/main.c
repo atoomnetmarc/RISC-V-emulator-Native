@@ -62,6 +62,10 @@ static bool snapshot_first;
 static bool stdin_pollable;
 static bool tap_pollable;
 
+// Ctrl-C forwarding set by -C: the guest receives 0x03 instead of the host
+// terminating on SIGINT.
+static bool kbd_interrupt_forward;
+
 // Idle statistics collected by the native board.
 static uint64_t wfi_calls;
 static uint64_t idle_ns;
@@ -1296,13 +1300,15 @@ int main(int argc, char *argv[]) {
             watchpoint = 1;
             watchpoint_address = (uint32_t)address;
             watchpoint_length = (uint32_t)length;
+        } else if (strcmp(argv[i], "-C") == 0) {
+            kbd_interrupt_forward = true;
         } else {
             binpath = argv[i];
         }
     }
 
     if (binpath == NULL && load_count == 0 && restore_prefix == NULL) {
-        printf("Usage: %s [-v [<start>]] [-m <instructions>] [-p <interval>] [-b <dtb>] [-l <address>,<file>] [-e <address>] [-D <disk>] [-N <ifname>] [-S <prefix>] [-R <prefix>] [-t [<count>]] [-r] [-d <address>,<length>] [-s <address>] [-w <address>[,<length>]] [<binary>]\n", argv[0]);
+        printf("Usage: %s [-v [<start>]] [-m <instructions>] [-p <interval>] [-b <dtb>] [-l <address>,<file>] [-e <address>] [-D <disk>] [-N <ifname>] [-S <prefix>] [-R <prefix>] [-t [<count>]] [-r] [-d <address>,<length>] [-s <address>] [-w <address>[,<length>]] [-C] [<binary>]\n", argv[0]);
         return 2;
     }
 
@@ -1550,6 +1556,9 @@ int main(int argc, char *argv[]) {
     tcgetattr(STDIN_FILENO, &orig_termios);
     struct termios term = orig_termios;
     term.c_lflag &= ~(tcflag_t)(ICANON | ECHO);
+    if (kbd_interrupt_forward) {
+        term.c_lflag &= ~(tcflag_t)ISIG;
+    }
     tcsetattr(STDIN_FILENO, TCSANOW, &term);
     int stdin_flags = fcntl(STDIN_FILENO, F_GETFL, 0);
     fcntl(STDIN_FILENO, F_SETFL, stdin_flags | O_NONBLOCK);
