@@ -783,6 +783,7 @@ int main(int argc, char *argv[]) {
     virtio_console_init(&virtio_console, VIRTIO_CONSOLE_ORIGIN, VIRTIO_CONSOLE_SIZE, memory, RAM_ORIGIN, RAM_LENGTH);
     virtio_net_init(&virtio_net, VIRTIO_NET_ORIGIN, VIRTIO_NET_SIZE, memory, RAM_ORIGIN, RAM_LENGTH, net_mac);
     virtio_rng_init(&virtio_rng, VIRTIO_RNG_ORIGIN, VIRTIO_RNG_SIZE, memory, RAM_ORIGIN, RAM_LENGTH);
+    goldfish_rtc_init(&goldfish_rtc, GOLDFISH_RTC_ORIGIN, GOLDFISH_RTC_SIZE);
 
     if (verbose) {
         printf("RiscvEmulatorInit()\n");

@@ -75,6 +75,29 @@ static inline void board_rng_fill(void *buffer, uint32_t length) {
 
 #define RVE_DEV_VIRTIO_RNG_FILL(buffer, length) board_rng_fill(buffer, length)
 
+// Returns the host realtime clock in nanoseconds.
+static inline uint64_t board_rtc_realtime_ns(void) {
+    struct timespec value;
+    if (clock_gettime(CLOCK_REALTIME, &value) != 0) {
+        return 0;
+    }
+
+    return (uint64_t)value.tv_sec * 1000000000ULL + (uint64_t)value.tv_nsec;
+}
+
+// Returns the host monotonic clock in nanoseconds.
+static inline uint64_t board_rtc_monotonic_ns(void) {
+    struct timespec value;
+    if (clock_gettime(CLOCK_MONOTONIC, &value) != 0) {
+        return 0;
+    }
+
+    return (uint64_t)value.tv_sec * 1000000000ULL + (uint64_t)value.tv_nsec;
+}
+
+#define RVE_DEV_GOLDFISH_RTC_REALTIME_NS()  board_rtc_realtime_ns()
+#define RVE_DEV_GOLDFISH_RTC_MONOTONIC_NS() board_rtc_monotonic_ns()
+
 // Disk file descriptor, opened by main() when -D <file> is given.
 extern int disk_fd;
 
@@ -188,6 +211,12 @@ static virtio_net_t virtio_net;
 
 static virtio_rng_t virtio_rng;
 
+// Goldfish RTC memory range.
+#define GOLDFISH_RTC_ORIGIN 0x10005000
+#define GOLDFISH_RTC_SIZE   0x1000
+
+static goldfish_rtc_t goldfish_rtc;
+
 /**
  * Loads bytes from the devices to the RISC-V hart.
  *
@@ -222,6 +251,10 @@ static inline bool RiscvDevicesLoad(uint32_t address, void *destination, uint8_t
     }
 
     if (virtio_rng_read(&virtio_rng, address, destination, length)) {
+        return true;
+    }
+
+    if (goldfish_rtc_read(&goldfish_rtc, address, destination, length)) {
         return true;
     }
 
@@ -270,6 +303,10 @@ static inline bool RiscvDevicesStore(uint32_t address, const void *source, uint8
     }
 
     if (virtio_rng_write(&virtio_rng, address, source, length)) {
+        return true;
+    }
+
+    if (goldfish_rtc_write(&goldfish_rtc, address, source, length)) {
         return true;
     }
 
