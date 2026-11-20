@@ -255,6 +255,7 @@ static inline void RiscvDevicesTick(RiscvEmulatorState_t *state) {
     plic_set_pending(&plic, 1, virtio_blk_irq_pending(&virtio_blk));
     plic_set_pending(&plic, 2, virtio_console_irq_pending(&virtio_console));
     plic_set_pending(&plic, 3, virtio_net_irq_pending(&virtio_net));
+    plic_set_pending(&plic, 4, uart16550_irq_pending(&uart));
 
 #if (RVE_E_ZICSR == 1)
     if (clint_timer_pending(&clint)) {

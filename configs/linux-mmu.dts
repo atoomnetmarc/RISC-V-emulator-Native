@@ -35,6 +35,8 @@
             status = "okay";
             compatible = "riscv";
             riscv,isa = "rv32imac_zicsr_zifencei_zicntr";
+            riscv,isa-base = "rv32i";
+            riscv,isa-extensions = "i", "m", "a", "c", "zicsr", "zifencei", "zicntr";
             mmu-type = "riscv,sv32";
 
             interrupt-controller {
@@ -64,6 +66,8 @@
             clock-frequency = <0x1000000>;
             reg = <0x00 0x10000000 0x00 0x100>;
             compatible = "ns16550a";
+            interrupts = <0x04>;
+            interrupt-parent = <0x05>;
         };
 
         poweroff {
