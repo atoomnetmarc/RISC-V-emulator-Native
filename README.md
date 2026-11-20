@@ -58,6 +58,12 @@ At stop the emulator prints `real`, `user` and `sys` in the format of the Linux 
 - `-d <address>,<length>` hexdumps `<length>` bytes of RAM from `<address>` at stop.
 - `-s <address>` stops before the instruction at `<address>` and dumps the registers.
 - `-w <address>[,<length>]` stops on the first load or store that overlaps the range and dumps the registers.
+- `-S <prefix>` enables snapshots and writes `<prefix>.json` with the CPU, CSR and device state and `<prefix>.bin` with the 64 MiB guest RAM.
+- `-R <prefix>` restores a snapshot written by `-S` and continues from the saved instruction and PC.
+
+With `-S <prefix>`, send `SIGUSR1` to the emulator process to request a snapshot. The signal handler only sets a flag; the main loop writes both files at the next instruction boundary and the emulation continues. Files are written to temporary names and renamed when complete, so a partial snapshot is never published. The JSON contains a magic value, a format version, the ISA flags, the instruction count, the PC, all integer registers, the CSRs, the trap and WFI state, and the registers of the CLINT, PLIC, UART, virtio devices and Goldfish RTC. 64-bit values are decimal strings so no digits are lost in parsers that use IEEE-754 numbers. Without `-S`, `SIGUSR1` keeps its default action.
+
+`-R <prefix>` reads both files, checks the header and ISA flags, restores the CPU and device state, and re-anchors the CLINT and RTC to the host clock at the moment of restore. The disk image and TAP interface are external state: use the same disk image as when the snapshot was written, and a restored TAP connection is not possible. The same snapshot can be loaded by `simavr-host -R <prefix>` to continue the boot on SimAVR.
 
 ## Verification
 

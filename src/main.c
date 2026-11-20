@@ -14,6 +14,7 @@ SPDX-License-Identifier: Apache-2.0
 #include <linux/if_tun.h>
 #include <net/if.h>
 #include <poll.h>
+#include <signal.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -49,6 +50,14 @@ int tap_fd = -1;
 RiscvEmulatorState_t RiscvEmulatorState;
 
 uint8_t pleasestop = 0;
+
+// SIGUSR1 requests a snapshot. The handler only sets this flag; the main loop
+// writes the files at an instruction boundary.
+static const char *snapshot_prefix = NULL;
+static const char *restore_prefix = NULL;
+static volatile sig_atomic_t snapshot_requested = 0;
+static FILE *snapshot_out;
+static bool snapshot_first;
 
 static bool stdin_pollable;
 static bool tap_pollable;
@@ -262,6 +271,714 @@ static void dump_memory(uint32_t address, uint32_t length) {
     }
 }
 
+/**
+ * Sets the snapshot request flag from the SIGUSR1 handler.
+ */
+static void snapshot_signal_handler(int signal_number) {
+    (void)signal_number;
+    snapshot_requested = 1;
+}
+
+/**
+ * Emits the key of the next flat JSON field.
+ */
+static void snapshot_key(const char *key) {
+    if (!snapshot_first) {
+        fputc(',', snapshot_out);
+    }
+    snapshot_first = false;
+    fprintf(snapshot_out, "\"%s\":", key);
+}
+
+/**
+ * Writes an 8-bit JSON field.
+ */
+static void snapshot_u8(const char *key, uint8_t value) {
+    snapshot_key(key);
+    fprintf(snapshot_out, "%u", value);
+}
+
+/**
+ * Writes a 32-bit JSON field.
+ */
+static void snapshot_u32(const char *key, uint32_t value) {
+    snapshot_key(key);
+    fprintf(snapshot_out, "%u", value);
+}
+
+/**
+ * Writes a 64-bit JSON field as a string so every digit survives a JSON parser.
+ */
+static void snapshot_u64(const char *key, uint64_t value) {
+    snapshot_key(key);
+    fprintf(snapshot_out, "\"%llu\"", (unsigned long long)value);
+}
+
+/**
+ * Writes a boolean JSON field.
+ */
+static void snapshot_bool(const char *key, bool value) {
+    snapshot_key(key);
+    fputs(value ? "true" : "false", snapshot_out);
+}
+
+/**
+ * Writes a byte array as a JSON array of numbers.
+ */
+static void snapshot_bytes(const char *key, const uint8_t *data, size_t length) {
+    snapshot_key(key);
+    fputc('[', snapshot_out);
+    for (size_t i = 0; i < length; i++) {
+        if (i != 0) {
+            fputc(',', snapshot_out);
+        }
+        fprintf(snapshot_out, "%u", data[i]);
+    }
+    fputc(']', snapshot_out);
+}
+
+/**
+ * Writes one prefixed 32-bit field of a virtio-mmio transport.
+ */
+static void snapshot_mmio_u32(const char *prefix, const char *field, uint32_t value) {
+    char key[128];
+    snprintf(key, sizeof(key), "%s.%s", prefix, field);
+    snapshot_u32(key, value);
+}
+
+/**
+ * Writes the restorable state of one virtio-mmio transport.
+ */
+static void snapshot_virtio_mmio(const char *prefix, const virtio_mmio_t *mmio) {
+    snapshot_mmio_u32(prefix, "base", mmio->base);
+    snapshot_mmio_u32(prefix, "size", mmio->size);
+    snapshot_mmio_u32(prefix, "memory_base", mmio->memory_base);
+    snapshot_mmio_u32(prefix, "memory_size", mmio->memory_size);
+    snapshot_mmio_u32(prefix, "device_id", mmio->device_id);
+    snapshot_mmio_u32(prefix, "vendor_id", mmio->vendor_id);
+    snapshot_mmio_u32(prefix, "host_features", mmio->host_features);
+    snapshot_mmio_u32(prefix, "host_features_sel", mmio->host_features_sel);
+    snapshot_mmio_u32(prefix, "guest_features", mmio->guest_features);
+    snapshot_mmio_u32(prefix, "guest_features_sel", mmio->guest_features_sel);
+    snapshot_mmio_u32(prefix, "guest_page_size", mmio->guest_page_size);
+    snapshot_mmio_u32(prefix, "queue_sel", mmio->queue_sel);
+    snapshot_mmio_u32(prefix, "queue_count", mmio->queue_count);
+    for (uint32_t i = 0; i < VIRTIO_MMIO_QUEUE_MAX; i++) {
+        char key[128];
+        const virtio_mmio_queue_t *queue = &mmio->queues[i];
+        snprintf(key, sizeof(key), "%s.queue%u.queue_num", prefix, i);
+        snapshot_u32(key, queue->queue_num);
+        snprintf(key, sizeof(key), "%s.queue%u.queue_align", prefix, i);
+        snapshot_u32(key, queue->queue_align);
+        snprintf(key, sizeof(key), "%s.queue%u.queue_pfn", prefix, i);
+        snapshot_u32(key, queue->queue_pfn);
+        snprintf(key, sizeof(key), "%s.queue%u.last_avail_idx", prefix, i);
+        snapshot_u32(key, queue->last_avail_idx);
+        snprintf(key, sizeof(key), "%s.queue%u.used_idx", prefix, i);
+        snapshot_u32(key, queue->used_idx);
+    }
+    snapshot_mmio_u32(prefix, "interrupt_status", mmio->interrupt_status);
+    snapshot_mmio_u32(prefix, "status", mmio->status);
+}
+
+/**
+ * Writes the CPU, CSR and device state to <prefix>.json and RAM to <prefix>.bin.
+ */
+static bool snapshot_write(const char *prefix) {
+    char json_path[1024];
+    char ram_path[1024];
+    char json_tmp[1024];
+    char ram_tmp[1024];
+    if (snprintf(json_path, sizeof(json_path), "%s.json", prefix) >= (int)sizeof(json_path) ||
+        snprintf(ram_path, sizeof(ram_path), "%s.bin", prefix) >= (int)sizeof(ram_path) ||
+        snprintf(json_tmp, sizeof(json_tmp), "%s.json.tmp", prefix) >= (int)sizeof(json_tmp) ||
+        snprintf(ram_tmp, sizeof(ram_tmp), "%s.bin.tmp", prefix) >= (int)sizeof(ram_tmp)) {
+        printf("Snapshot path is too long: %s\n", prefix);
+        return false;
+    }
+
+    FILE *json = fopen(json_tmp, "w");
+    if (json == NULL) {
+        printf("Cannot write %s.\n", json_tmp);
+        return false;
+    }
+    FILE *ram = fopen(ram_tmp, "wb");
+    if (ram == NULL) {
+        printf("Cannot write %s.\n", ram_tmp);
+        fclose(json);
+        remove(json_tmp);
+        return false;
+    }
+
+    snapshot_out = json;
+    snapshot_first = true;
+    fputc('{', json);
+
+    snapshot_u32("magic", 0x52564553u);
+    snapshot_u32("version", 1);
+    snapshot_u64("instructions", (uint64_t)loopcounter);
+    snapshot_u32("ram_origin", RAM_ORIGIN);
+    snapshot_u32("ram_size", RAM_LENGTH);
+    snapshot_u32("isa.m", RVE_E_M);
+    snapshot_u32("isa.a", RVE_E_A);
+    snapshot_u32("isa.c", RVE_E_C);
+    snapshot_u32("isa.zicsr", RVE_E_ZICSR);
+    snapshot_u32("isa.zicntr", RVE_E_ZICNTR);
+    snapshot_u32("isa.sv32", RVE_E_SV32);
+    snapshot_u32("isa.zalrsc", RVE_E_ZALRSC);
+
+    snapshot_u32("cpu.pc", RiscvEmulatorState.programcounter);
+    snapshot_u32("cpu.next_pc", RiscvEmulatorState.programcounternext);
+    snapshot_u32("cpu.instruction", RiscvEmulatorState.instruction.value);
+    snapshot_u8("cpu.instruction_executed", RiscvEmulatorState.instructionexecuted);
+    snapshot_u8("trap.pending", RiscvEmulatorState.trap.pending);
+    snapshot_u8("trap.cause", RiscvEmulatorState.trap.cause);
+    snapshot_u32("trap.tval", RiscvEmulatorState.trap.tval);
+    for (uint32_t i = 0; i < 32; i++) {
+        char key[32];
+        snprintf(key, sizeof(key), "cpu.x%u", i);
+        snapshot_u32(key, RiscvEmulatorState.reg.x[i]);
+    }
+#if (RVE_E_ZALRSC == 1)
+    snapshot_u8("cpu.reservation_valid", RiscvEmulatorState.reservationvalid);
+    snapshot_u32("cpu.reservation_address", RiscvEmulatorState.reservationaddress);
+#endif
+#if (RVE_E_HOOK == 1 || RVE_E_DISASM == 1)
+    snapshot_u8("cpu.instruction_handled", RiscvEmulatorState.instructionhandled);
+#endif
+#if (RVE_E_ZICSR == 1)
+    snapshot_u8("cpu.privilege", RiscvEmulatorState.privilege);
+    snapshot_u8("cpu.waiting", RiscvEmulatorState.waiting);
+    snapshot_u8("cpu.wfi_timeout", RiscvEmulatorState.wfi_timeout);
+#if (RVE_E_ZICNTR == 1)
+    snapshot_u8("cpu.counter_written", RiscvEmulatorState.counterwritten);
+#endif
+    snapshot_u32("csr.mhartid", csr_raw(&RiscvEmulatorState.csr.mhartid));
+    snapshot_u32("csr.marchid", RiscvEmulatorState.csr.marchid);
+    snapshot_u32("csr.mstatus", csr_raw(&RiscvEmulatorState.csr.mstatus));
+    snapshot_u32("csr.misa", csr_raw(&RiscvEmulatorState.csr.misa));
+    snapshot_u32("csr.medeleg", csr_raw(&RiscvEmulatorState.csr.medeleg));
+    snapshot_u32("csr.mideleg", csr_raw(&RiscvEmulatorState.csr.mideleg));
+    snapshot_u32("csr.mie", csr_raw(&RiscvEmulatorState.csr.mie));
+    snapshot_u32("csr.mtvec", csr_raw(&RiscvEmulatorState.csr.mtvec));
+    snapshot_u32("csr.mstatush", csr_raw(&RiscvEmulatorState.csr.mstatush));
+    snapshot_u32("csr.menvcfg", RiscvEmulatorState.csr.menvcfg);
+    snapshot_u32("csr.mscratch", csr_raw(&RiscvEmulatorState.csr.mscratch));
+    snapshot_u32("csr.mepc", RiscvEmulatorState.csr.mepc);
+    snapshot_u32("csr.mcause", csr_raw(&RiscvEmulatorState.csr.mcause));
+    snapshot_u32("csr.mtval", RiscvEmulatorState.csr.mtval);
+    snapshot_u32("csr.mip", csr_raw(&RiscvEmulatorState.csr.mip));
+    snapshot_u32("csr.mip_platform", RiscvEmulatorState.csr.mip_platform);
+    snapshot_u32("csr.mip_platform_software", RiscvEmulatorState.csr.mip_platform_software);
+    snapshot_u32("csr.pmpcfg0", csr_raw(&RiscvEmulatorState.csr.pmpcfg0));
+    snapshot_u32("csr.pmpaddr0", csr_raw(&RiscvEmulatorState.csr.pmpaddr0));
+    snapshot_u32("csr.mnstatus", csr_raw(&RiscvEmulatorState.csr.mnstatus));
+    snapshot_u32("csr.stvec", csr_raw(&RiscvEmulatorState.csr.stvec));
+    snapshot_u32("csr.scounteren", RiscvEmulatorState.csr.scounteren);
+    snapshot_u32("csr.senvcfg", RiscvEmulatorState.csr.senvcfg);
+    snapshot_u32("csr.sscratch", RiscvEmulatorState.csr.sscratch);
+    snapshot_u32("csr.sepc", RiscvEmulatorState.csr.sepc);
+    snapshot_u32("csr.scause", csr_raw(&RiscvEmulatorState.csr.scause));
+    snapshot_u32("csr.stval", RiscvEmulatorState.csr.stval);
+    snapshot_u32("csr.satp", csr_raw(&RiscvEmulatorState.csr.satp));
+    snapshot_u32("csr.zeroreg", RiscvEmulatorState.csr.zeroreg);
+    snapshot_u32("csr.mcounteren", RiscvEmulatorState.csr.mcounteren);
+#if (RVE_E_ZICNTR == 1)
+    snapshot_u64("csr.cycle", RiscvEmulatorState.csr.cycle);
+    snapshot_u64("csr.time", RiscvEmulatorState.csr.time);
+    snapshot_u64("csr.instret", RiscvEmulatorState.csr.instret);
+    snapshot_u64("csr.mhpmcounter3", RiscvEmulatorState.csr.mhpmcounter3);
+#endif
+#endif
+
+    snapshot_u64("clint.mtime", clint.mtime);
+    snapshot_u64("clint.mtimecmp", clint.mtimecmp);
+    snapshot_u64("clint.last_us", clint.last_us);
+    snapshot_u32("clint.msip", clint.msip);
+    snapshot_u32("clint.mtime_high_latched", clint.mtime_high_latched);
+    snapshot_bool("clint.mtime_high_latch_valid", clint.mtime_high_latch_valid);
+
+    for (uint32_t i = 0; i < PLIC_SOURCE_COUNT; i++) {
+        char key[32];
+        snprintf(key, sizeof(key), "plic.priority%u", i);
+        snapshot_u32(key, plic.priority[i]);
+    }
+    snapshot_u32("plic.pending", plic.pending);
+    for (uint32_t i = 0; i < PLIC_CONTEXT_COUNT; i++) {
+        char key[32];
+        snprintf(key, sizeof(key), "plic.enable%u", i);
+        snapshot_u32(key, plic.enable[i]);
+        snprintf(key, sizeof(key), "plic.threshold%u", i);
+        snapshot_u32(key, plic.threshold[i]);
+    }
+
+    snapshot_u8("uart.ier", uart.ier);
+    snapshot_u8("uart.fcr", uart.fcr);
+    snapshot_u8("uart.lcr", uart.lcr);
+    snapshot_u8("uart.mcr", uart.mcr);
+    snapshot_u8("uart.scr", uart.scr);
+    snapshot_u8("uart.dll", uart.dll);
+    snapshot_u8("uart.dlm", uart.dlm);
+    snapshot_bytes("uart.fifo", uart.fifo, UART16550_FIFO_SIZE);
+    snapshot_u8("uart.fifo_read", uart.fifo_read);
+    snapshot_u8("uart.fifo_write", uart.fifo_write);
+    snapshot_u8("uart.fifo_count", uart.fifo_count);
+    snapshot_bool("uart.overrun", uart.overrun);
+    snapshot_bool("uart.thre_pending", uart.thre_pending);
+
+    snapshot_virtio_mmio("virtio_blk", &virtio_blk.mmio);
+    snapshot_u64("virtio_blk.capacity", virtio_blk.capacity);
+    snapshot_virtio_mmio("virtio_console", &virtio_console.mmio);
+    snapshot_bytes("virtio_console.rx_fifo", virtio_console.rx_fifo, VIRTIO_CONSOLE_RX_FIFO_SIZE);
+    snapshot_u8("virtio_console.rx_read", virtio_console.rx_read);
+    snapshot_u8("virtio_console.rx_write", virtio_console.rx_write);
+    snapshot_u8("virtio_console.rx_count", virtio_console.rx_count);
+    snapshot_bool("virtio_console.rx_overrun", virtio_console.rx_overrun);
+    snapshot_virtio_mmio("virtio_net", &virtio_net.mmio);
+    snapshot_virtio_mmio("virtio_rng", &virtio_rng.mmio);
+
+    snapshot_u64("rtc.base_ns", goldfish_rtc.base_ns);
+    snapshot_u64("rtc.anchor_ns", goldfish_rtc.anchor_ns);
+    snapshot_u32("rtc.latch_high", goldfish_rtc.latch_high);
+    snapshot_u32("rtc.alarm_low", goldfish_rtc.alarm_low);
+    snapshot_u32("rtc.alarm_high", goldfish_rtc.alarm_high);
+    snapshot_u32("rtc.irq_enabled", goldfish_rtc.irq_enabled);
+    snapshot_u32("rtc.alarm_status", goldfish_rtc.alarm_status);
+    snapshot_u32("sig.pending", sig_pending);
+
+    fputs("}\n", json);
+    if (fclose(json) != 0) {
+        printf("Cannot close %s.\n", json_tmp);
+        fclose(ram);
+        remove(json_tmp);
+        remove(ram_tmp);
+        return false;
+    }
+    if (fwrite(memory, 1, RAM_LENGTH, ram) != RAM_LENGTH || fclose(ram) != 0) {
+        printf("Cannot write %s.\n", ram_tmp);
+        remove(json_tmp);
+        remove(ram_tmp);
+        return false;
+    }
+    bool json_installed = rename(json_tmp, json_path) == 0;
+    bool ram_installed = rename(ram_tmp, ram_path) == 0;
+    if (!json_installed || !ram_installed) {
+        if (json_installed) {
+            remove(json_path);
+        }
+        if (ram_installed) {
+            remove(ram_path);
+        }
+        remove(json_tmp);
+        remove(ram_tmp);
+        printf("Cannot install snapshot files for %s.\n", prefix);
+        return false;
+    }
+    printf("Snapshot written to %s and %s after %zu instructions.\n", json_path, ram_path, loopcounter);
+    return true;
+}
+
+/**
+ * Returns the value text that follows a flat JSON key.
+ */
+static const char *json_value(const char *json, const char *key) {
+    char pattern[128];
+    int length = snprintf(pattern, sizeof(pattern), "\"%s\":", key);
+    if (length < 0 || (size_t)length >= sizeof(pattern)) {
+        return NULL;
+    }
+    const char *found = strstr(json, pattern);
+    if (found == NULL) {
+        return NULL;
+    }
+    return found + strlen(pattern);
+}
+
+/**
+ * Reads a decimal 32-bit JSON field.
+ */
+static bool json_u32(const char *json, const char *key, uint32_t *value) {
+    const char *text = json_value(json, key);
+    if (text == NULL) {
+        return false;
+    }
+    char *end;
+    unsigned long parsed = strtoul(text, &end, 10);
+    if (end == text) {
+        return false;
+    }
+    *value = (uint32_t)parsed;
+    return true;
+}
+
+/**
+ * Reads a decimal 8-bit JSON field.
+ */
+static bool json_u8(const char *json, const char *key, uint8_t *value) {
+    uint32_t parsed;
+    if (!json_u32(json, key, &parsed) || parsed > UINT8_MAX) {
+        return false;
+    }
+    *value = (uint8_t)parsed;
+    return true;
+}
+
+/**
+ * Reads a 64-bit JSON field stored as a decimal string.
+ */
+static bool json_u64(const char *json, const char *key, uint64_t *value) {
+    const char *text = json_value(json, key);
+    if (text == NULL || *text != '"') {
+        return false;
+    }
+    char *end;
+    unsigned long long parsed = strtoull(text + 1, &end, 10);
+    if (end == text + 1 || *end != '"') {
+        return false;
+    }
+    *value = (uint64_t)parsed;
+    return true;
+}
+
+/**
+ * Reads a boolean JSON field.
+ */
+static bool json_bool(const char *json, const char *key, bool *value) {
+    const char *text = json_value(json, key);
+    if (text == NULL) {
+        return false;
+    }
+    if (strncmp(text, "true", 4) == 0) {
+        *value = true;
+        return true;
+    }
+    if (strncmp(text, "false", 5) == 0) {
+        *value = false;
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Reads a JSON array of byte values.
+ */
+static bool json_bytes(const char *json, const char *key, uint8_t *bytes, size_t length) {
+    const char *text = json_value(json, key);
+    if (text == NULL || *text != '[') {
+        return false;
+    }
+    text++;
+    for (size_t i = 0; i < length; i++) {
+        while (*text == ' ' || *text == ',') {
+            text++;
+        }
+        char *end;
+        unsigned long parsed = strtoul(text, &end, 10);
+        if (end == text || parsed > UINT8_MAX) {
+            return false;
+        }
+        bytes[i] = (uint8_t)parsed;
+        text = end;
+    }
+    return true;
+}
+
+/**
+ * Writes a 32-bit value into a packed CSR field.
+ */
+#if (RVE_E_ZICSR == 1)
+/**
+ * Writes a 32-bit value into a packed CSR field by byte offset.
+ */
+static void csr_set_u32(size_t offset, uint32_t value) {
+    memcpy((uint8_t *)&RiscvEmulatorState.csr + offset, &value, sizeof(value));
+}
+
+#if (RVE_E_ZICNTR == 1)
+/**
+ * Writes a 64-bit value into a packed CSR field by byte offset.
+ */
+static void csr_set_u64(size_t offset, uint64_t value) {
+    memcpy((uint8_t *)&RiscvEmulatorState.csr + offset, &value, sizeof(value));
+}
+#endif
+#endif
+
+/**
+ * Restores one virtio-mmio transport from flat JSON keys.
+ */
+static bool restore_mmio(const char *json, const char *prefix, virtio_mmio_t *mmio) {
+    char key[128];
+    bool ok = true;
+#define RESTORE_MMIO_U32(field)                              \
+    do {                                                     \
+        snprintf(key, sizeof(key), "%s.%s", prefix, #field); \
+        ok = json_u32(json, key, &mmio->field) && ok;        \
+    } while (0)
+    RESTORE_MMIO_U32(base);
+    RESTORE_MMIO_U32(size);
+    RESTORE_MMIO_U32(memory_base);
+    RESTORE_MMIO_U32(memory_size);
+    RESTORE_MMIO_U32(device_id);
+    RESTORE_MMIO_U32(vendor_id);
+    RESTORE_MMIO_U32(host_features);
+    RESTORE_MMIO_U32(host_features_sel);
+    RESTORE_MMIO_U32(guest_features);
+    RESTORE_MMIO_U32(guest_features_sel);
+    RESTORE_MMIO_U32(guest_page_size);
+    RESTORE_MMIO_U32(queue_sel);
+    RESTORE_MMIO_U32(queue_count);
+    for (uint32_t i = 0; i < VIRTIO_MMIO_QUEUE_MAX; i++) {
+        virtio_mmio_queue_t *queue = &mmio->queues[i];
+        snprintf(key, sizeof(key), "%s.queue%u.queue_num", prefix, i);
+        ok = json_u32(json, key, &queue->queue_num) && ok;
+        snprintf(key, sizeof(key), "%s.queue%u.queue_align", prefix, i);
+        ok = json_u32(json, key, &queue->queue_align) && ok;
+        snprintf(key, sizeof(key), "%s.queue%u.queue_pfn", prefix, i);
+        ok = json_u32(json, key, &queue->queue_pfn) && ok;
+        snprintf(key, sizeof(key), "%s.queue%u.last_avail_idx", prefix, i);
+        uint32_t value;
+        ok = json_u32(json, key, &value) && ok;
+        queue->last_avail_idx = (uint16_t)value;
+        snprintf(key, sizeof(key), "%s.queue%u.used_idx", prefix, i);
+        ok = json_u32(json, key, &value) && ok;
+        queue->used_idx = (uint16_t)value;
+    }
+    RESTORE_MMIO_U32(interrupt_status);
+    RESTORE_MMIO_U32(status);
+#undef RESTORE_MMIO_U32
+    return ok;
+}
+
+/**
+ * Restores CPU, CSR, device and RAM state from a snapshot.
+ */
+static bool snapshot_restore(const char *prefix) {
+    char json_path[1024];
+    char ram_path[1024];
+    if (snprintf(json_path, sizeof(json_path), "%s.json", prefix) >= (int)sizeof(json_path) ||
+        snprintf(ram_path, sizeof(ram_path), "%s.bin", prefix) >= (int)sizeof(ram_path)) {
+        printf("Snapshot path is too long: %s\n", prefix);
+        return false;
+    }
+
+    FILE *json = fopen(json_path, "r");
+    if (json == NULL) {
+        printf("Cannot read %s.\n", json_path);
+        return false;
+    }
+    if (fseek(json, 0, SEEK_END) != 0) {
+        fclose(json);
+        return false;
+    }
+    long size = ftell(json);
+    if (size <= 0 || size > 1024 * 1024 || fseek(json, 0, SEEK_SET) != 0) {
+        fclose(json);
+        return false;
+    }
+    char *text = malloc((size_t)size + 1u);
+    if (text == NULL || fread(text, 1, (size_t)size, json) != (size_t)size) {
+        free(text);
+        fclose(json);
+        return false;
+    }
+    text[size] = '\0';
+    fclose(json);
+
+    uint32_t magic = 0;
+    uint32_t version = 0;
+    uint32_t ram_origin = 0;
+    uint32_t ram_size = 0;
+    bool ok = json_u32(text, "magic", &magic) && magic == 0x52564553u &&
+              json_u32(text, "version", &version) && version == 1 &&
+              json_u32(text, "ram_origin", &ram_origin) && ram_origin == RAM_ORIGIN &&
+              json_u32(text, "ram_size", &ram_size) && ram_size == RAM_LENGTH;
+    if (!ok) {
+        printf("Snapshot %s has an incompatible header.\n", json_path);
+        free(text);
+        return false;
+    }
+    uint32_t isa_m = 0;
+    uint32_t isa_a = 0;
+    uint32_t isa_c = 0;
+    uint32_t isa_zicsr = 0;
+    uint32_t isa_zicntr = 0;
+    uint32_t isa_sv32 = 0;
+    uint32_t isa_zalrsc = 0;
+    ok = json_u32(text, "isa.m", &isa_m) && isa_m == RVE_E_M &&
+         json_u32(text, "isa.a", &isa_a) && isa_a == RVE_E_A &&
+         json_u32(text, "isa.c", &isa_c) && isa_c == RVE_E_C &&
+         json_u32(text, "isa.zicsr", &isa_zicsr) && isa_zicsr == RVE_E_ZICSR &&
+         json_u32(text, "isa.zicntr", &isa_zicntr) && isa_zicntr == RVE_E_ZICNTR &&
+         json_u32(text, "isa.sv32", &isa_sv32) && isa_sv32 == RVE_E_SV32 &&
+         json_u32(text, "isa.zalrsc", &isa_zalrsc) && isa_zalrsc == RVE_E_ZALRSC;
+    if (!ok) {
+        printf("Snapshot %s was written with a different ISA configuration.\n", json_path);
+        free(text);
+        return false;
+    }
+
+    uint64_t instructions = 0;
+    ok = json_u64(text, "instructions", &instructions) && ok;
+    loopcounter = (size_t)instructions;
+    ok = json_u32(text, "cpu.pc", &RiscvEmulatorState.programcounter) && ok;
+    ok = json_u32(text, "cpu.next_pc", &RiscvEmulatorState.programcounternext) && ok;
+    ok = json_u32(text, "cpu.instruction", &RiscvEmulatorState.instruction.value) && ok;
+    ok = json_u8(text, "cpu.instruction_executed", &RiscvEmulatorState.instructionexecuted) && ok;
+    ok = json_u8(text, "trap.pending", &RiscvEmulatorState.trap.pending) && ok;
+    ok = json_u8(text, "trap.cause", &RiscvEmulatorState.trap.cause) && ok;
+    ok = json_u32(text, "trap.tval", &RiscvEmulatorState.trap.tval) && ok;
+    for (uint32_t i = 0; i < 32; i++) {
+        char key[32];
+        snprintf(key, sizeof(key), "cpu.x%u", i);
+        ok = json_u32(text, key, &RiscvEmulatorState.reg.x[i]) && ok;
+    }
+#if (RVE_E_ZALRSC == 1)
+    ok = json_u8(text, "cpu.reservation_valid", &RiscvEmulatorState.reservationvalid) && ok;
+    ok = json_u32(text, "cpu.reservation_address", &RiscvEmulatorState.reservationaddress) && ok;
+#endif
+#if (RVE_E_HOOK == 1 || RVE_E_DISASM == 1)
+    ok = json_u8(text, "cpu.instruction_handled", &RiscvEmulatorState.instructionhandled) && ok;
+#endif
+#if (RVE_E_ZICSR == 1)
+    ok = json_u8(text, "cpu.privilege", &RiscvEmulatorState.privilege) && ok;
+    ok = json_u8(text, "cpu.waiting", &RiscvEmulatorState.waiting) && ok;
+    ok = json_u8(text, "cpu.wfi_timeout", &RiscvEmulatorState.wfi_timeout) && ok;
+#if (RVE_E_ZICNTR == 1)
+    ok = json_u8(text, "cpu.counter_written", &RiscvEmulatorState.counterwritten) && ok;
+#endif
+#define RESTORE_CSR(field)                                \
+    do {                                                  \
+        uint32_t value;                                   \
+        ok = json_u32(text, "csr." #field, &value) && ok; \
+        csr_set_u32(offsetof(RiscvCSR_t, field), value);  \
+    } while (0)
+    RESTORE_CSR(mhartid);
+    RESTORE_CSR(marchid);
+    RESTORE_CSR(mstatus);
+    RESTORE_CSR(misa);
+    RESTORE_CSR(medeleg);
+    RESTORE_CSR(mideleg);
+    RESTORE_CSR(mie);
+    RESTORE_CSR(mtvec);
+    RESTORE_CSR(mstatush);
+    RESTORE_CSR(menvcfg);
+    RESTORE_CSR(mscratch);
+    RESTORE_CSR(mepc);
+    RESTORE_CSR(mcause);
+    RESTORE_CSR(mtval);
+    RESTORE_CSR(mip);
+    RESTORE_CSR(mip_platform);
+    RESTORE_CSR(mip_platform_software);
+    RESTORE_CSR(pmpcfg0);
+    RESTORE_CSR(pmpaddr0);
+    RESTORE_CSR(mnstatus);
+    RESTORE_CSR(stvec);
+    RESTORE_CSR(scounteren);
+    RESTORE_CSR(senvcfg);
+    RESTORE_CSR(sscratch);
+    RESTORE_CSR(sepc);
+    RESTORE_CSR(scause);
+    RESTORE_CSR(stval);
+    RESTORE_CSR(satp);
+    RESTORE_CSR(zeroreg);
+    RESTORE_CSR(mcounteren);
+#undef RESTORE_CSR
+#if (RVE_E_ZICNTR == 1)
+#define RESTORE_CSR64(field)                              \
+    do {                                                  \
+        uint64_t value;                                   \
+        ok = json_u64(text, "csr." #field, &value) && ok; \
+        csr_set_u64(offsetof(RiscvCSR_t, field), value);  \
+    } while (0)
+    RESTORE_CSR64(cycle);
+    RESTORE_CSR64(time);
+    RESTORE_CSR64(instret);
+    RESTORE_CSR64(mhpmcounter3);
+#undef RESTORE_CSR64
+#endif
+#endif
+
+    ok = json_u64(text, "clint.mtime", &clint.mtime) && ok;
+    ok = json_u64(text, "clint.mtimecmp", &clint.mtimecmp) && ok;
+    ok = json_u64(text, "clint.last_us", &clint.last_us) && ok;
+    ok = json_u32(text, "clint.msip", &clint.msip) && ok;
+    ok = json_u32(text, "clint.mtime_high_latched", &clint.mtime_high_latched) && ok;
+    ok = json_bool(text, "clint.mtime_high_latch_valid", &clint.mtime_high_latch_valid) && ok;
+    for (uint32_t i = 0; i < PLIC_SOURCE_COUNT; i++) {
+        char key[32];
+        snprintf(key, sizeof(key), "plic.priority%u", i);
+        ok = json_u32(text, key, &plic.priority[i]) && ok;
+    }
+    ok = json_u32(text, "plic.pending", &plic.pending) && ok;
+    for (uint32_t i = 0; i < PLIC_CONTEXT_COUNT; i++) {
+        char key[32];
+        snprintf(key, sizeof(key), "plic.enable%u", i);
+        ok = json_u32(text, key, &plic.enable[i]) && ok;
+        snprintf(key, sizeof(key), "plic.threshold%u", i);
+        ok = json_u32(text, key, &plic.threshold[i]) && ok;
+    }
+    ok = json_u8(text, "uart.ier", &uart.ier) && ok;
+    ok = json_u8(text, "uart.fcr", &uart.fcr) && ok;
+    ok = json_u8(text, "uart.lcr", &uart.lcr) && ok;
+    ok = json_u8(text, "uart.mcr", &uart.mcr) && ok;
+    ok = json_u8(text, "uart.scr", &uart.scr) && ok;
+    ok = json_u8(text, "uart.dll", &uart.dll) && ok;
+    ok = json_u8(text, "uart.dlm", &uart.dlm) && ok;
+    ok = json_bytes(text, "uart.fifo", uart.fifo, UART16550_FIFO_SIZE) && ok;
+    ok = json_u8(text, "uart.fifo_read", &uart.fifo_read) && ok;
+    ok = json_u8(text, "uart.fifo_write", &uart.fifo_write) && ok;
+    ok = json_u8(text, "uart.fifo_count", &uart.fifo_count) && ok;
+    ok = json_bool(text, "uart.overrun", &uart.overrun) && ok;
+    ok = json_bool(text, "uart.thre_pending", &uart.thre_pending) && ok;
+    ok = restore_mmio(text, "virtio_blk", &virtio_blk.mmio) && ok;
+    ok = json_u64(text, "virtio_blk.capacity", &virtio_blk.capacity) && ok;
+    ok = restore_mmio(text, "virtio_console", &virtio_console.mmio) && ok;
+    ok = json_bytes(text, "virtio_console.rx_fifo", virtio_console.rx_fifo, VIRTIO_CONSOLE_RX_FIFO_SIZE) && ok;
+    ok = json_u8(text, "virtio_console.rx_read", &virtio_console.rx_read) && ok;
+    ok = json_u8(text, "virtio_console.rx_write", &virtio_console.rx_write) && ok;
+    ok = json_u8(text, "virtio_console.rx_count", &virtio_console.rx_count) && ok;
+    ok = json_bool(text, "virtio_console.rx_overrun", &virtio_console.rx_overrun) && ok;
+    ok = restore_mmio(text, "virtio_net", &virtio_net.mmio) && ok;
+    ok = restore_mmio(text, "virtio_rng", &virtio_rng.mmio) && ok;
+    ok = json_u64(text, "rtc.base_ns", &goldfish_rtc.base_ns) && ok;
+    ok = json_u64(text, "rtc.anchor_ns", &goldfish_rtc.anchor_ns) && ok;
+    ok = json_u32(text, "rtc.latch_high", &goldfish_rtc.latch_high) && ok;
+    ok = json_u32(text, "rtc.alarm_low", &goldfish_rtc.alarm_low) && ok;
+    ok = json_u32(text, "rtc.alarm_high", &goldfish_rtc.alarm_high) && ok;
+    ok = json_u32(text, "rtc.irq_enabled", &goldfish_rtc.irq_enabled) && ok;
+    ok = json_u32(text, "rtc.alarm_status", &goldfish_rtc.alarm_status) && ok;
+    ok = json_u32(text, "sig.pending", &sig_pending) && ok;
+    free(text);
+    if (!ok) {
+        printf("Snapshot %s is missing state fields.\n", json_path);
+        return false;
+    }
+
+    FILE *ram = fopen(ram_path, "rb");
+    if (ram == NULL) {
+        printf("Cannot read %s.\n", ram_path);
+        return false;
+    }
+    size_t got = fread(memory, 1, RAM_LENGTH, ram);
+    fclose(ram);
+    if (got != RAM_LENGTH) {
+        printf("Snapshot RAM %s has %zu bytes, expected %u.\n", ram_path, got, RAM_LENGTH);
+        return false;
+    }
+
+    // The saved host clock belongs to the process that wrote the snapshot.
+    // Re-anchor both time sources to this host so the next tick adds only the
+    // time elapsed since the restore.
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    clint.last_us = (uint64_t)now.tv_sec * 1000000u + (uint64_t)now.tv_nsec / 1000u;
+    goldfish_rtc.anchor_ns = (uint64_t)now.tv_sec * 1000000000u + (uint64_t)now.tv_nsec;
+    printf("Restored snapshot %s at %zu instructions, pc=0x%08X.\n",
+           prefix, loopcounter, RiscvEmulatorState.programcounter);
+    return true;
+}
+
 // Consumer hook: log traps and stop on a watchpoint.
 void RiscvEmulatorHook(const RiscvEmulatorState_t *state, const RiscvEmulatorHookContext_t *context) {
     if (context->instruction != NULL && context->instruction[0] == '_') {
@@ -438,9 +1155,10 @@ int main(int argc, char *argv[]) {
     // to load an extra image, -e <address> to set the initial PC, -D <file>
     // to attach a disk image, -N <ifname> to attach a TAP interface,
     // -t [<count>] to log traps, -r to dump registers at stop,
-    // -d <address>,<length> to dump RAM at stop, -s <address> to stop at a PC
-    // and -w <address>[,<length>] to stop on a load or store. The binary path
-    // is the last argument; run_test.sh passes it via elf2bin.sh.
+    // -d <address>,<length> to dump RAM at stop, -s <address> to stop at a PC,
+    // -w <address>[,<length>] to stop on a load or store, -S <prefix> to write
+    // a snapshot on SIGUSR1 and -R <prefix> to restore one. The binary path is
+    // the last argument; run_test.sh passes it via elf2bin.sh.
     const char *binpath = NULL;
     const char *dtbpath = NULL;
     const char *diskpath = NULL;
@@ -514,6 +1232,12 @@ int main(int argc, char *argv[]) {
         } else if (strcmp(argv[i], "-N") == 0 && i + 1 < argc) {
             i++;
             tappath = argv[i];
+        } else if (strcmp(argv[i], "-S") == 0 && i + 1 < argc) {
+            i++;
+            snapshot_prefix = argv[i];
+        } else if (strcmp(argv[i], "-R") == 0 && i + 1 < argc) {
+            i++;
+            restore_prefix = argv[i];
         } else if (strcmp(argv[i], "-t") == 0) {
             trap_log = 1;
             if (i + 1 < argc) {
@@ -577,14 +1301,24 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    if (binpath == NULL && load_count == 0) {
-        printf("Usage: %s [-v [<start>]] [-m <instructions>] [-p <interval>] [-b <dtb>] [-l <address>,<file>] [-e <address>] [-D <disk>] [-t [<count>]] [-r] [-d <address>,<length>] [-s <address>] [-w <address>[,<length>]] [<binary>]\n", argv[0]);
+    if (binpath == NULL && load_count == 0 && restore_prefix == NULL) {
+        printf("Usage: %s [-v [<start>]] [-m <instructions>] [-p <interval>] [-b <dtb>] [-l <address>,<file>] [-e <address>] [-D <disk>] [-N <ifname>] [-S <prefix>] [-R <prefix>] [-t [<count>]] [-r] [-d <address>,<length>] [-s <address>] [-w <address>[,<length>]] [<binary>]\n", argv[0]);
         return 2;
     }
 
     // Unbuffered stdout so the RVCP-SUMMARY line is not lost if the emulator halts.
     setvbuf(stdout, NULL, _IONBF, 0);
     pleasestop = 0;
+
+    if (snapshot_prefix != NULL) {
+        struct sigaction action = {0};
+        action.sa_handler = snapshot_signal_handler;
+        sigemptyset(&action.sa_mask);
+        if (sigaction(SIGUSR1, &action, NULL) != 0) {
+            printf("Cannot install the SIGUSR1 handler.\n");
+            return 2;
+        }
+    }
 
     memory = malloc(RAM_LENGTH);
     if (memory == NULL) {
@@ -802,6 +1536,11 @@ int main(int argc, char *argv[]) {
     RiscvEmulatorState.programcounter = entry;
     RiscvEmulatorState.programcounternext = entry;
 
+    if (restore_prefix != NULL && !snapshot_restore(restore_prefix)) {
+        free(memory);
+        return 2;
+    }
+
     // maxloopcounter is 0 (the default) unless -m <N> is given, meaning the
     // emulation runs until the test signals a halt.
 
@@ -821,6 +1560,13 @@ int main(int argc, char *argv[]) {
 #define STDIN_POLL_INTERVAL 4096
 
     for (;;) {
+        if (snapshot_requested != 0) {
+            snapshot_requested = 0;
+            if (snapshot_prefix != NULL) {
+                (void)snapshot_write(snapshot_prefix);
+            }
+        }
+
         if (breakpoint != 0 && RiscvEmulatorState.programcounter == breakpoint_address) {
             printf("Breakpoint hit at 0x%08X after %zu instructions.\n",
                    breakpoint_address, loopcounter);
