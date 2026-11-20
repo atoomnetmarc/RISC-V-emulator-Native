@@ -44,7 +44,7 @@ The emulator loads the DTB at the address given with `-b` and passes its physica
 
 When the guest executes `WFI`, the native board blocks in `ppoll()` until the CLINT timer deadline, stdin, or the TAP interface becomes ready. A programmed timer sleeps at most one second; without a timer the wait stays at one millisecond so the ACT timeout tests remain bounded. The emulator core keeps its finite-WFI behaviour.
 
-At stop the emulator prints `real`, `user` and `sys` in the format of the Linux `time` command, plus `idle` as the time spent blocked in `ppoll()` and its share of `real`. A `WFI` line reports the number of waits, the wake reason counts and the longest sleep.
+At stop the emulator prints `real`, `user` and `sys` in the format of the Linux `time` command, plus `idle` as the time spent blocked in `ppoll()` and its share of `real`. A `WFI` line reports the number of waits, the wake reason counts and the longest sleep. The `Allocated` line reports the RAM size and the bytes loaded from files. The `RAM pages touched` line reports the count of 4 KiB pages touched by CPU stores and file loads, with the equivalent bytes, KiB and MiB. Virtio DMA writes are not counted.
 
 ## Debugging
 

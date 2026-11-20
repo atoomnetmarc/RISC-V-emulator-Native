@@ -38,6 +38,7 @@ SPDX-License-Identifier: Apache-2.0
 #include "memory.h"
 
 uint8_t *memory;
+uint8_t ram_dirty[RAM_DIRTY_BYTES];
 
 // Disk file descriptor, opened by -D <file>.
 int disk_fd = -1;
@@ -595,6 +596,7 @@ int main(int argc, char *argv[]) {
     // Load the actual binary (objcopy -O binary output) directly into RAM.
     // Its byte 0 corresponds to address 0x80000000 (RAM_ORIGIN).
     size_t binsize = 0;
+    size_t loaded_bytes = 0;
     if (binpath != NULL) {
         FILE *fbin = fopen(binpath, "rb");
         if (fbin == NULL) {
@@ -609,6 +611,8 @@ int main(int argc, char *argv[]) {
             free(memory);
             return 2;
         }
+        loaded_bytes = binsize;
+        ram_mark_dirty(RAM_ORIGIN, (uint32_t)binsize);
         if (verbose) {
             printf("Read %zu bytes.\n", binsize);
         }
@@ -636,6 +640,8 @@ int main(int argc, char *argv[]) {
             printf("Error reading %s.\n", loads[i].path);
             return 2;
         }
+        loaded_bytes += size;
+        ram_mark_dirty(loads[i].address, (uint32_t)size);
         fclose(fload);
         if (verbose) {
             printf("Loaded %zu bytes at 0x%08X.\n", size, loads[i].address);
@@ -698,6 +704,8 @@ int main(int argc, char *argv[]) {
             printf("Error reading %s.\n", dtbpath);
             return 2;
         }
+        loaded_bytes += (size_t)dtbsize;
+        ram_mark_dirty((uint32_t)(RAM_ORIGIN + dtb_offset), (uint32_t)dtbsize);
         fclose(fdtb);
         dtb_address = RAM_ORIGIN + (uint32_t)dtb_offset;
         if (verbose) {
@@ -891,8 +899,15 @@ int main(int argc, char *argv[]) {
     if (memory_dump != 0) {
         dump_memory(memory_dump_address, memory_dump_length);
     }
-    printf("Allocated %zu bytes of RAM (%zu bytes used by the binary).\n",
-           (size_t)RAM_LENGTH, binsize);
+    printf("Allocated %zu bytes of RAM (%zu bytes loaded from files).\n",
+           (size_t)RAM_LENGTH, loaded_bytes);
+    size_t touched_pages = ram_dirty_pages();
+    uint64_t touched_bytes = (uint64_t)touched_pages * RAM_PAGE_SIZE;
+    printf("RAM pages touched: %zu of %u (4 KiB pages) = %llu bytes (%llu KiB, %.2f MiB).\n",
+           touched_pages, (unsigned)RAM_PAGE_COUNT,
+           (unsigned long long)touched_bytes,
+           (unsigned long long)(touched_bytes / 1024u),
+           (double)touched_bytes / (1024.0 * 1024.0));
     free(memory);
 
     if (disk_fd >= 0) {

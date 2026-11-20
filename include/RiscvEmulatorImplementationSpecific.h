@@ -74,6 +74,7 @@ static inline bool RiscvEmulatorStore(uint32_t address, const void *source, uint
         return false;
     }
 
+    ram_mark_dirty(address, length);
     memcpy(&memory[address - RAM_ORIGIN], source, length);
     return true;
 }
