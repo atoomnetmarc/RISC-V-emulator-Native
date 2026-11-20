@@ -5,20 +5,26 @@ SPDX-License-Identifier: Apache-2.0
 
 */
 
+#define _GNU_SOURCE
 #define _POSIX_C_SOURCE 200809L
 #define _DEFAULT_SOURCE
 
+#include <errno.h>
 #include <fcntl.h>
 #include <linux/if_tun.h>
 #include <net/if.h>
 #include <poll.h>
 #include <stdarg.h>
+#include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/resource.h>
 #include <sys/stat.h>
 #include <termios.h>
+#include <time.h>
 #include <unistd.h>
 
 // The consumer provides its own RiscvEmulatorDisasmPrintf and
@@ -42,6 +48,19 @@ int tap_fd = -1;
 RiscvEmulatorState_t RiscvEmulatorState;
 
 uint8_t pleasestop = 0;
+
+static bool stdin_pollable;
+static bool tap_pollable;
+
+// Idle statistics collected by the native board.
+static uint64_t wfi_calls;
+static uint64_t idle_ns;
+static uint64_t longest_idle_ns;
+static uint64_t wake_timer;
+static uint64_t wake_stdin;
+static uint64_t wake_tap;
+static uint64_t wake_signal;
+static uint64_t start_ns;
 
 size_t loopcounter = 0;
 
@@ -297,7 +316,120 @@ static void poll_tap(void) {
     }
 }
 
+// A programmed CLINT timer may sleep up to one second. Without a timer the
+// wait stays at one millisecond so the ACT timeout tests remain bounded.
+#define WFI_TIMER_SLEEP_CAP_US 1000000u
+#define WFI_NO_TIMER_SLEEP_US  1000u
+
+// Returns true when stdin can wake ppoll(). Regular files are always ready.
+static bool stdin_is_pollable(void) {
+    struct stat st;
+    if (fstat(STDIN_FILENO, &st) != 0) {
+        return false;
+    }
+    return isatty(STDIN_FILENO) != 0 || S_ISFIFO(st.st_mode) || S_ISSOCK(st.st_mode);
+}
+
+// Returns the monotonic host clock in nanoseconds.
+static uint64_t monotonic_ns(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000000u + (uint64_t)ts.tv_nsec;
+}
+
+// Prints a duration in the format used by the Linux time command.
+static void print_time(const char *label, uint64_t ns, const char *note) {
+    uint64_t milliseconds = ns / 1000000u;
+    printf("%-4s %llum%llu.%03llus%s\n", label,
+           (unsigned long long)(milliseconds / 60000u),
+           (unsigned long long)((milliseconds / 1000u) % 60u),
+           (unsigned long long)(milliseconds % 1000u),
+           note);
+}
+
+// Blocks the host until the CLINT deadline or an input event wakes the hart.
+static void board_idle(void) {
+    poll_stdin();
+    poll_tap();
+    wfi_calls++;
+
+    struct pollfd fds[2] = {0};
+    nfds_t nfds = 0;
+    int stdin_index = -1;
+    int tap_index = -1;
+
+    if (stdin_pollable) {
+        stdin_index = (int)nfds;
+        fds[nfds].fd = STDIN_FILENO;
+        fds[nfds].events = POLLIN;
+        nfds++;
+    }
+    if (tap_fd >= 0 && tap_pollable) {
+        tap_index = (int)nfds;
+        fds[nfds].fd = tap_fd;
+        fds[nfds].events = POLLIN;
+        nfds++;
+    }
+
+    uint64_t begin = monotonic_ns();
+    bool interrupted = false;
+
+    for (;;) {
+        uint64_t sleep_us = WFI_NO_TIMER_SLEEP_US;
+        if (clint.mtimecmp > clint.mtime) {
+            uint64_t remaining_us = clint.mtimecmp - clint.mtime;
+            sleep_us = remaining_us < WFI_TIMER_SLEEP_CAP_US ? remaining_us : WFI_TIMER_SLEEP_CAP_US;
+        }
+
+        struct timespec timeout = {
+            .tv_sec = (time_t)(sleep_us / 1000000u),
+            .tv_nsec = (long)((sleep_us % 1000000u) * 1000u),
+        };
+
+        int result = ppoll(fds, nfds, &timeout, NULL);
+        if (result >= 0 || errno != EINTR) {
+            break;
+        }
+        interrupted = true;
+    }
+
+    uint64_t slept = monotonic_ns() - begin;
+    idle_ns += slept;
+    if (slept > longest_idle_ns) {
+        longest_idle_ns = slept;
+    }
+
+    if (interrupted) {
+        wake_signal++;
+    } else if (stdin_index >= 0 && fds[stdin_index].revents != 0) {
+        wake_stdin++;
+    } else if (tap_index >= 0 && fds[tap_index].revents != 0) {
+        wake_tap++;
+    } else {
+        wake_timer++;
+    }
+
+    if (stdin_index >= 0) {
+        short revents = fds[stdin_index].revents;
+        if ((revents & (POLLHUP | POLLERR | POLLNVAL)) != 0) {
+            stdin_pollable = false;
+        } else if ((revents & POLLIN) != 0) {
+            poll_stdin();
+        }
+    }
+    if (tap_index >= 0) {
+        short revents = fds[tap_index].revents;
+        if ((revents & (POLLHUP | POLLERR | POLLNVAL)) != 0) {
+            tap_pollable = false;
+        } else if ((revents & POLLIN) != 0) {
+            poll_tap();
+        }
+    }
+}
+
 int main(int argc, char *argv[]) {
+    start_ns = monotonic_ns();
+
     // Parse -v [<start>] to enable verbose instruction tracing from an
     // instruction count, -m <N> to limit the number of simulated instructions
     // (0 = unlimited, the default), -p <N> to print the PC every N
@@ -631,6 +763,7 @@ int main(int argc, char *argv[]) {
             return 2;
         }
 
+        tap_pollable = true;
         if (verbose) {
             printf("Attached TAP interface %s.\n", tappath);
         }
@@ -671,6 +804,7 @@ int main(int argc, char *argv[]) {
     tcsetattr(STDIN_FILENO, TCSANOW, &term);
     int stdin_flags = fcntl(STDIN_FILENO, F_GETFL, 0);
     fcntl(STDIN_FILENO, F_SETFL, stdin_flags | O_NONBLOCK);
+    stdin_pollable = stdin_is_pollable();
 
 // Polling stdin on every instruction slows the simulation drastically,
 // so only do it once every STDIN_POLL_INTERVAL instructions.
@@ -695,13 +829,7 @@ int main(int argc, char *argv[]) {
         }
 
         if (RiscvEmulatorIsWaiting(&RiscvEmulatorState)) {
-            // The hart is parked in WFI. Poll stdin and the TAP interface every
-            // idle iteration (the 4096-instruction interval does not apply) and
-            // sleep briefly so the host does not spin. The CLINT timer interrupt
-            // is the architectural wake source.
-            poll_stdin();
-            poll_tap();
-            poll(NULL, 0, 1);
+            board_idle();
         } else if (loopcounter % STDIN_POLL_INTERVAL == 0) {
             poll_stdin();
             poll_tap();
@@ -735,6 +863,28 @@ int main(int argc, char *argv[]) {
     }
 
     printf("Simulated %zu CPU instructions.\n", loopcounter);
+
+    struct rusage usage;
+    getrusage(RUSAGE_SELF, &usage);
+    uint64_t user_ns = (uint64_t)usage.ru_utime.tv_sec * 1000000000u + (uint64_t)usage.ru_utime.tv_usec * 1000u;
+    uint64_t sys_ns = (uint64_t)usage.ru_stime.tv_sec * 1000000000u + (uint64_t)usage.ru_stime.tv_usec * 1000u;
+    uint64_t real_ns = monotonic_ns() - start_ns;
+    double idle_percent = real_ns > 0 ? (double)idle_ns * 100.0 / (double)real_ns : 0.0;
+    char idle_note[32];
+    snprintf(idle_note, sizeof(idle_note), " (%.1f%% of real)", idle_percent);
+
+    print_time("real", real_ns, "");
+    print_time("user", user_ns, "");
+    print_time("sys", sys_ns, "");
+    print_time("idle", idle_ns, idle_note);
+    printf("WFI: %llu calls, wakeups: %llu timer/cap, %llu stdin, %llu TAP, %llu signal, longest sleep %llu ms.\n",
+           (unsigned long long)wfi_calls,
+           (unsigned long long)wake_timer,
+           (unsigned long long)wake_stdin,
+           (unsigned long long)wake_tap,
+           (unsigned long long)wake_signal,
+           (unsigned long long)(longest_idle_ns / 1000000u));
+
     if (register_dump != 0 || stop_condition_hit != 0) {
         dump_registers(&RiscvEmulatorState);
     }

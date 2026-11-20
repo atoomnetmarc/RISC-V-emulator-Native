@@ -40,6 +40,12 @@ The emulator loads the DTB at the address given with `-b` and passes its physica
 - `-D <file>` attaches a disk image to virtio-blk.
 - `-N <ifname>` attaches an existing TAP interface to virtio-net. The interface must already exist and be up. The emulator opens `/dev/net/tun` with `O_NONBLOCK`, verifies the flag with `fcntl`, and polls the descriptor with a zero timeout before reading, so an idle TAP never blocks the main loop.
 
+## Idle behaviour
+
+When the guest executes `WFI`, the native board blocks in `ppoll()` until the CLINT timer deadline, stdin, or the TAP interface becomes ready. A programmed timer sleeps at most one second; without a timer the wait stays at one millisecond so the ACT timeout tests remain bounded. The emulator core keeps its finite-WFI behaviour.
+
+At stop the emulator prints `real`, `user` and `sys` in the format of the Linux `time` command, plus `idle` as the time spent blocked in `ppoll()` and its share of `real`. A `WFI` line reports the number of waits, the wake reason counts and the longest sleep.
+
 ## Debugging
 
 - `-v [<start>]` prints the instruction trace, optionally from instruction `<start>`.
