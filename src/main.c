@@ -59,6 +59,10 @@ static volatile sig_atomic_t snapshot_requested = 0;
 static FILE *snapshot_out;
 static bool snapshot_first;
 
+// SIGWINCH reports a host terminal resize. The handler only sets this flag;
+// the main loop reads TIOCGWINSZ at an instruction boundary.
+static volatile sig_atomic_t terminal_resize_requested = 0;
+
 static bool stdin_pollable;
 static bool tap_pollable;
 
@@ -281,6 +285,35 @@ static void dump_memory(uint32_t address, uint32_t length) {
 static void snapshot_signal_handler(int signal_number) {
     (void)signal_number;
     snapshot_requested = 1;
+}
+
+/**
+ * Sets the terminal resize flag from the SIGWINCH handler.
+ */
+static void terminal_resize_signal_handler(int signal_number) {
+    (void)signal_number;
+    terminal_resize_requested = 1;
+}
+
+/**
+ * Publishes the host terminal size through the virtio-console config space.
+ * stdin is the interactive terminal; stdout and stderr are tried as fallbacks
+ * for shells that redirect stdin. Without a tty the size defaults to 80x25.
+ */
+static void update_terminal_size(void) {
+    struct winsize ws;
+
+    if (ioctl(STDIN_FILENO, TIOCGWINSZ, &ws) != 0 &&
+        ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) != 0 &&
+        ioctl(STDERR_FILENO, TIOCGWINSZ, &ws) != 0) {
+        ws.ws_col = 80;
+        ws.ws_row = 25;
+    }
+
+    uint16_t cols = ws.ws_col > 0 ? (uint16_t)ws.ws_col : 80;
+    uint16_t rows = ws.ws_row > 0 ? (uint16_t)ws.ws_row : 25;
+
+    virtio_console_set_size(&virtio_console, cols, rows);
 }
 
 /**
@@ -533,6 +566,7 @@ static bool snapshot_write(const char *prefix) {
     snapshot_virtio_mmio("virtio_blk", &virtio_blk.mmio);
     snapshot_u64("virtio_blk.capacity", virtio_blk.capacity);
     snapshot_virtio_mmio("virtio_console", &virtio_console.mmio);
+    snapshot_bytes("virtio_console.config", virtio_console.config, VIRTIO_CONSOLE_CONFIG_SIZE);
     snapshot_bytes("virtio_console.rx_fifo", virtio_console.rx_fifo, VIRTIO_CONSOLE_RX_FIFO_SIZE);
     snapshot_u8("virtio_console.rx_read", virtio_console.rx_read);
     snapshot_u8("virtio_console.rx_write", virtio_console.rx_write);
@@ -938,6 +972,7 @@ static bool snapshot_restore(const char *prefix) {
     ok = restore_mmio(text, "virtio_blk", &virtio_blk.mmio) && ok;
     ok = json_u64(text, "virtio_blk.capacity", &virtio_blk.capacity) && ok;
     ok = restore_mmio(text, "virtio_console", &virtio_console.mmio) && ok;
+    ok = json_bytes(text, "virtio_console.config", virtio_console.config, VIRTIO_CONSOLE_CONFIG_SIZE) && ok;
     ok = json_bytes(text, "virtio_console.rx_fifo", virtio_console.rx_fifo, VIRTIO_CONSOLE_RX_FIFO_SIZE) && ok;
     ok = json_u8(text, "virtio_console.rx_read", &virtio_console.rx_read) && ok;
     ok = json_u8(text, "virtio_console.rx_write", &virtio_console.rx_write) && ok;
@@ -1316,6 +1351,15 @@ int main(int argc, char *argv[]) {
     setvbuf(stdout, NULL, _IONBF, 0);
     pleasestop = 0;
 
+    struct sigaction resize_action = {0};
+    resize_action.sa_handler = terminal_resize_signal_handler;
+    sigemptyset(&resize_action.sa_mask);
+    resize_action.sa_flags = SA_RESTART;
+    if (sigaction(SIGWINCH, &resize_action, NULL) != 0) {
+        printf("Cannot install the SIGWINCH handler.\n");
+        return 2;
+    }
+
     if (snapshot_prefix != NULL) {
         struct sigaction action = {0};
         action.sa_handler = snapshot_signal_handler;
@@ -1547,6 +1591,10 @@ int main(int argc, char *argv[]) {
         return 2;
     }
 
+    // Publish the host size before the first instruction. A restored snapshot
+    // carries its own size, which is replaced by the current terminal size.
+    update_terminal_size();
+
     // maxloopcounter is 0 (the default) unless -m <N> is given, meaning the
     // emulation runs until the test signals a halt.
 
@@ -1574,6 +1622,11 @@ int main(int argc, char *argv[]) {
             if (snapshot_prefix != NULL) {
                 (void)snapshot_write(snapshot_prefix);
             }
+        }
+
+        if (terminal_resize_requested != 0) {
+            terminal_resize_requested = 0;
+            update_terminal_size();
         }
 
         if (breakpoint != 0 && RiscvEmulatorState.programcounter == breakpoint_address) {
